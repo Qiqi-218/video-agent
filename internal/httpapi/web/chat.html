@@ -40,10 +40,15 @@
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px}
 
   /* three-column AppFrame */
-  .frame{display:grid;grid-template-columns:246px minmax(0,1fr) 320px;height:100vh;transition:grid-template-columns .15s}
-  .frame.no-right{grid-template-columns:246px minmax(0,1fr) 0}
-  .frame.no-left{grid-template-columns:0 minmax(0,1fr) 320px}
-  .frame.no-left.no-right{grid-template-columns:0 minmax(0,1fr) 0}
+  /* three-column AppFrame.
+     Columns are pinned explicitly rather than left to auto-placement. With a
+     collapsed first track (0px) auto-placement shifted every item one track to
+     the left, so hiding the left panel handed the conversation's 1fr track to
+     the right panel and left the centre column 0px wide. */
+  .frame{display:grid;grid-template-columns:246px minmax(0,1fr) 320px;height:100vh}
+  #left{grid-column:1}
+  #center{grid-column:2}
+  #right{grid-column:3}
   .col{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
   #left{background:var(--panel);border-right:1px solid var(--line)}
   #right{background:var(--panel);border-left:1px solid var(--line)}
@@ -195,24 +200,19 @@
     border:3px dashed var(--accent);display:none;place-items:center;z-index:60;pointer-events:none}
   .dropveil.on{display:grid}
   .dropveil div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 22px}
-  /* Responsive sizing must not fight the toggles. These rules only change how
-     much room a visible panel takes; whether a panel is shown is decided by the
-     no-left / no-right classes, because a media-query display:none cannot be
-     overridden by the toggle and made "恢复布局" look broken.
-     Side columns use minmax(0, N) rather than a fixed N: with a fixed width the
-     right column could consume the whole grid and push the conversation
-     off-screen on a mid-size window. */
+  /* Responsive sizing must not fight the toggles.
+     Two rules learned the hard way:
+     1. Never set display here. A media-query display:none cannot be overridden
+        by the inline style the toggle sets, which made "恢复布局" look broken.
+     2. Never collapse a track to 0 either. Columns are pinned by grid-column, so
+        an empty track is simply unused; collapsing it only invited
+        auto-placement to shuffle the remaining panels across tracks. Hiding a
+        panel is done once, by display:none on the panel itself. */
   @media (max-width:1180px){
     .frame{grid-template-columns:minmax(0,220px) minmax(0,1fr) minmax(0,290px)}
-    .frame.no-left{grid-template-columns:0 minmax(0,1fr) minmax(0,290px)}
-    .frame.no-right{grid-template-columns:minmax(0,220px) minmax(0,1fr) 0}
-    .frame.no-left.no-right{grid-template-columns:0 minmax(0,1fr) 0}
   }
   @media (max-width:860px){
     .frame{grid-template-columns:minmax(0,200px) minmax(0,1fr) minmax(0,250px)}
-    .frame.no-left{grid-template-columns:0 minmax(0,1fr) minmax(0,250px)}
-    .frame.no-right{grid-template-columns:minmax(0,200px) minmax(0,1fr) 0}
-    .frame.no-left.no-right{grid-template-columns:0 minmax(0,1fr) 0}
   }
 </style>
 </head>
@@ -303,11 +303,21 @@ $('btnTheme').onclick=()=>{
    A hidden panel must never be a dead end: the toggles are always rendered with
    their own text label, each reflects its visible/hidden state, and a "恢复布局"
    button appears the moment anything is hidden as an unmistakable way back. */
+// Column widths per breakpoint. Every state names all three tracks, so hiding a
+// panel drops its track and the conversation reclaims the space, while
+// grid-column keeps each panel in its own track.
+function trackWidths(){
+  const narrow=window.matchMedia('(max-width:860px)').matches;
+  const mid=window.matchMedia('(max-width:1180px)').matches;
+  const pair=narrow?[200,250]:(mid?[220,290]:[246,320]);
+  return {l:pair[0]+'px', r:pair[1]+'px'};
+}
 function syncFrame(){
   const l=localStorage.getItem('va.left')!=='0', r=localStorage.getItem('va.right')!=='0';
-  const f=$('frame');
-  f.classList.toggle('no-left',!l);f.classList.toggle('no-right',!r);
-  $('left').style.display=l?'':'none';$('right').style.display=r?'':'none';
+  const w=trackWidths();
+  $('frame').style.gridTemplateColumns=(l?w.l:'0')+' minmax(0,1fr) '+(r?w.r:'0');
+  $('left').style.display=l?'':'none';
+  $('right').style.display=r?'':'none';
 
   const bl=$('btnLeft'), br=$('btnRight');
   bl.classList.toggle('on',l);br.classList.toggle('on',r);
@@ -332,6 +342,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 syncFrame();
+window.addEventListener('resize',syncFrame);
 
 /* thread */
 function addMessage(role,text){
