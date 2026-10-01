@@ -31,7 +31,7 @@ bin/video-agent --data data/demo timeline get --id demo-timeline --revision 1
 bin/video-agent --data data/demo render export --timeline demo-timeline --revision 1
 ```
 
-所有业务结果输出 JSON 到 stdout；错误输出 JSON 到 stderr 并返回非零退出码。`--file -` 接收 stdin 的一个 JSON 对象。`--data` 必须位于命令前。帮助：`bin/video-agent --help`。此处是 P1 操作入口，P3 的完整 Agent 工具契约、异步接口和 MCP 尚未实现。
+所有业务结果输出 JSON 到 stdout；错误输出 JSON 到 stderr 并返回非零退出码。`--file -` 接收 stdin 的一个 JSON 对象。`--data` 必须位于命令前。帮助：`bin/video-agent --help`。此处是 P1 操作入口；P3 的统一工具、异步接口和 HTTP 使用说明见 [API 文档](api.md)。MCP 仍未实现。
 
 ## 时间与编辑规则
 
@@ -60,7 +60,7 @@ bin/video-agent --data data/demo render export --timeline demo-timeline --revisi
 
 ## 预览、导出与状态
 
-P1 渲染同步执行，任务和精确渲染计划持久化；结束后可按返回的任务 ID 查询记录。预览最长边最多 640 像素，时间线内容、时长和音频与导出相同。异步提交与执行中任务发现留给 P3。
+P1 渲染同步执行，任务和精确渲染计划持久化；结束后可按返回的任务 ID 查询记录。预览最长边最多 640 像素，时间线内容、时长和音频与导出相同。P3 的 `render_submit` 将同一渲染语义包装为 queued/running/completed/cancelled 的异步任务。
 
 先生成同目录临时文件，再验证 H.264/AAC、分辨率、帧率、帧数、时长，并用 FFmpeg 完整解码视频和音轨。成功后以不覆盖已有路径的原子硬链接发布，再将任务标为 `completed`。错误和正常取消会保存 `failed` / `cancelled`，清理临时文件。`plan.inputs` 保留源资产、片段 ID、源入出点和输出帧区间。
 
