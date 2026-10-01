@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video Agent · 对话剪辑助手</title>
+<style>
+  :root{
+    color-scheme:light;
+    --bg:oklch(98.4% .004 258);
+    --panel:oklch(100% 0 0);
+    --ink:oklch(24% .025 258);
+    --muted:oklch(50% .022 258);
+    --line:oklch(89% .012 258);
+    --line-soft:oklch(94% .008 258);
+    --accent:oklch(52% .19 264);
+    --accent-soft:oklch(95% .03 264);
+    --good:oklch(48% .13 153);
+    --bad:oklch(52% .18 26);
+    --warn:oklch(58% .13 75);
+    --radius:12px;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden}
+  .app{display:grid;grid-template-columns:260px minmax(0,1fr);height:100vh}
+
+  /* ---------- sidebar ---------- */
+  aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .brand{display:flex;align-items:center;gap:9px;padding:16px 16px 12px;font-weight:700;letter-spacing:-.01em}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:11px;letter-spacing:0}
+  .newchat{margin:4px 12px 10px;padding:9px 12px;border:1px solid var(--line);background:var(--panel);border-radius:9px;cursor:pointer;font:inherit;font-size:13px;color:var(--ink);text-align:left;display:flex;align-items:center;gap:8px}
+  .newchat:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .sessions{overflow-y:auto;flex:1;padding:0 8px 12px;min-height:0}
+  .sess{padding:9px 10px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+  .sess:hover{background:var(--line-soft)}
+  .sess.on{background:var(--accent-soft);color:var(--ink)}
+  .sess b{font-weight:600;color:var(--ink);font-size:12.5px}
+  .sess span{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sidefoot{border-top:1px solid var(--line);padding:10px 14px;font-size:11.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+  .sidefoot b{color:var(--ink);font-weight:600}
+
+  /* ---------- main ---------- */
+  main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .title{font-weight:650;font-size:14px}
+  .meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:11.5px}
+  .pill.ok{border-color:color-mix(in oklab,var(--good) 45%,var(--line));color:var(--good)}
+  .pill.off{border-color:color-mix(in oklab,var(--bad) 40%,var(--line));color:var(--bad)}
+
+  .scroll{flex:1;overflow-y:auto;min-height:0;padding:22px 0 8px}
+  .thread{max-width:820px;margin:0 auto;padding:0 22px;display:flex;flex-direction:column;gap:16px}
+
+  .empty{margin:8vh auto 0;max-width:560px;text-align:center;color:var(--muted)}
+  .empty h1{font-size:22px;color:var(--ink);margin:0 0 8px;letter-spacing:-.02em}
+  .empty p{margin:0 0 18px;font-size:13.5px;line-height:1.65}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 13px;font-size:12.5px;cursor:pointer;font:inherit;color:var(--ink)}
+  .chip:hover{border-color:var(--accent);background:var(--accent-soft)}
+
+  .msg{display:flex;gap:11px}
+  .who{flex:none;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:700;border:1px solid var(--line)}
+  .msg.user .who{background:var(--accent);color:#fff;border-color:transparent}
+  .msg.assistant .who{background:var(--panel);color:var(--accent)}
+  .bubble{min-width:0;flex:1}
+  .bubble .txt{white-space:pre-wrap;word-break:break-word;line-height:1.68;font-size:14px;padding-top:2px}
+  .msg.user .bubble .txt{background:var(--accent-soft);border:1px solid color-mix(in oklab,var(--accent) 22%,var(--line));border-radius:var(--radius);padding:10px 13px}
+
+  /* tool call cards — the point of the whole UI */
+  .tool{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;margin-top:9px}
+  .tool>summary{list-style:none;cursor:pointer;padding:9px 12px;display:flex;align-items:center;gap:9px;font-size:12.5px}
+  .tool>summary::-webkit-details-marker{display:none}
+  .tool .nm{font-weight:650;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .tool .arg{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+  .tool .st{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);flex:none}
+  .tool .st.run{color:var(--warn);border-color:color-mix(in oklab,var(--warn) 40%,var(--line))}
+  .tool .st.ok{color:var(--good);border-color:color-mix(in oklab,var(--good) 40%,var(--line))}
+  .tool .st.err{color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,var(--line))}
+  .tool pre{margin:0;padding:11px 13px;border-top:1px solid var(--line);background:oklch(98.8% .003 258);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto}
+  .tool .caret{color:var(--muted);font-size:10px;flex:none}
+
+  .steps{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;padding:2px 0 0 37px}
+  .spin{width:11px;height:11px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- composer ---------- */
+  .composer{border-top:1px solid var(--line);background:var(--panel);padding:13px 22px 15px}
+  .cbox{max-width:820px;margin:0 auto}
+  .field{display:flex;gap:9px;align-items:flex-end;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:8px 8px 8px 12px;transition:border-color .15s}
+  .field:focus-within{border-color:var(--accent)}
+  textarea{flex:1;border:0;outline:0;resize:none;font:inherit;font-size:14px;line-height:1.55;max-height:190px;min-height:24px;padding:6px 0;background:transparent;color:var(--ink)}
+  .send{border:0;border-radius:9px;background:var(--accent);color:#fff;font:inherit;font-size:13px;font-weight:600;padding:9px 15px;cursor:pointer;flex:none}
+  .send:disabled{opacity:.45;cursor:not-allowed}
+  .stop{background:var(--bad)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:7px;display:flex;justify-content:space-between;gap:10px}
+  kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 4px;font-family:inherit;font-size:10.5px}
+  .banner{margin:9px auto 0;max-width:820px;border:1px solid color-mix(in oklab,var(--warn) 40%,var(--line));background:color-mix(in oklab,var(--warn) 8%,var(--panel));color:oklch(42% .1 75);border-radius:9px;padding:9px 12px;font-size:12.5px}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+  .toast.on{opacity:.94}
+  @media (max-width:760px){.app{grid-template-columns:1fr}aside{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><span class="dot"></span><span>Video Agent<small>对话式剪辑助手</small></span></div>
+    <button class="newchat" id="newChat">＋ 新对话</button>
+    <div class="sessions" id="sessions"></div>
+    <div class="sidefoot">
+      <div><b id="fModel">—</b></div>
+      <div id="fTools">— 个工具</div>
+      <div><a href="/" style="color:var(--accent);text-decoration:none">打开经典剪辑台 →</a></div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div class="title">剪辑助手</div>
+      <div class="meta">
+        <span class="pill" id="mCfg">模型检查中…</span>
+        <span class="pill" id="mTools">工具 —</span>
+        <span class="pill" id="mStep">待命</span>
+      </div>
+    </header>
+
+    <div class="scroll" id="scroll">
+      <div class="thread" id="thread"></div>
+    </div>
+
+    <div class="composer">
+      <div class="banner" id="banner" style="display:none"></div>
+      <div class="cbox">
+        <div class="field">
+          <textarea id="input" rows="1" placeholder="说说你想怎么剪，例如：先看看有哪些素材，然后找出讲数学的片段剪成一分钟"></textarea>
+          <button class="send" id="send">发送</button>
+        </div>
+        <div class="hint">
+          <span>助手会自己决定调用哪个工具 · 每一步都可展开核对</span>
+          <span><kbd>Enter</kbd> 发送 · <kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+let sessionId=localStorage.getItem('va.session')||'';
+let controller=null, running=false;
+const thread=$('thread'), scroller=$('scroll');
+
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200)}
+function setStep(text,busy){const el=$('mStep');el.textContent=text;el.className='pill'+(busy?'':' ok')}
+function scrollDown(){scroller.scrollTop=scroller.scrollHeight}
+
+function clearEmpty(){const e=thread.querySelector('.empty');if(e)e.remove()}
+
+function addMessage(role,text){
+  clearEmpty();
+  const wrap=document.createElement('div');
+  wrap.className='msg '+(role==='user'?'user':'assistant');
+  wrap.innerHTML=`<div class="who">${role==='user'?'你':'AI'}</div><div class="bubble"><div class="txt"></div></div>`;
+  wrap.querySelector('.txt').textContent=text;
+  thread.appendChild(wrap);scrollDown();
+  return wrap.querySelector('.bubble');
+}
+
+// One expandable card per tool call — the visible proof of what the agent did.
+function addToolCard(name,args){
+  clearEmpty();
+  const d=document.createElement('details');
+  d.className='tool';
+  d.dataset.tool=name;
+  d.innerHTML=`<summary><span class="caret">▶</span><span class="nm">${esc(name)}</span><span class="arg">${esc(args)}</span><span class="st run">运行中</span></summary><pre>等待结果…</pre>`;
+  thread.appendChild(d);scrollDown();
+  return d;
+}
+function settleToolCard(card,result,ok){
+  card.querySelector('.st').className='st '+(ok?'ok':'err');
+  card.querySelector('.st').textContent=ok?'完成':'失败';
+  let pretty=result;
+  try{pretty=JSON.stringify(JSON.parse(result),null,2)}catch(e){}
+  card.querySelector('pre').textContent=pretty;
+  if(!ok) card.open=true;
+  scrollDown();
+}
+
+function addThinking(){
+  clearEmpty();
+  const el=document.createElement('div');
+  el.className='steps';el.id='thinking';
+  el.innerHTML='<span class="spin"></span><span>正在思考…</span>';
+  thread.appendChild(el);scrollDown();
+}
+const stopThinking=()=>{const e=$('thinking');if(e)e.remove()};
+
+function renderEmpty(){
+  thread.innerHTML=`<div class="empty">
+    <h1>从一个想法开始，而不是一条流水线。</h1>
+    <p>直接用中文说出你要什么。助手会自己调用工具：查素材、做内容理解、检索片段、组装时间线、提交渲染，每一步你都能展开看到它到底做了什么。</p>
+    <div class="chips">
+      <button class="chip">现在有哪些项目和素材？</button>
+      <button class="chip">先对素材做一次内容理解</button>
+      <button class="chip">找出讲数学的片段，剪成一分钟</button>
+      <button class="chip">把刚才的方案导出成 MP4</button>
+    </div></div>`;
+  thread.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{$('input').value=c.textContent;send()});
+}
+
+async function loadConfig(){
+  try{
+    const r=await fetch('/v1/agent/config'),j=await r.json();
+    const c=j.result;
+    const cfg=$('mCfg');
+    if(c.configured){cfg.textContent='模型就绪';cfg.className='pill ok';$('fModel').textContent=c.model}
+    else{cfg.textContent='模型未配置';cfg.className='pill off';$('fModel').textContent='未配置';
+      const b=$('banner');b.style.display='block';
+      b.textContent='服务端没有读到文本模型配置，助手无法推理。请设置 AUTOCLIP_TEXT_BASE_URL / _MODEL / _API_KEY 后重启服务。'}
+    $('mTools').textContent='工具 '+c.tool_count;$('fTools').textContent=c.tool_count+' 个工具';
+  }catch(e){$('mCfg').textContent='无法读取配置';$('mCfg').className='pill off'}
+}
+
+async function loadSessions(){
+  try{
+    const r=await fetch('/v1/agent/sessions'),j=await r.json();
+    const list=j.result||[], box=$('sessions');
+    box.innerHTML='';
+    list.forEach(s=>{
+      const d=document.createElement('div');
+      d.className='sess'+(s.id===sessionId?' on':'');
+      d.innerHTML=`<b>${esc(s.preview||s.id.slice(0,18))}</b><span>${s.messages} 条消息${s.running?' · 进行中':''}</span>`;
+      d.onclick=()=>{sessionId=s.id;localStorage.setItem('va.session',s.id);replay(s.id);loadSessions()};
+      box.appendChild(d);
+    });
+  }catch(e){}
+}
+
+async function replay(id){
+  thread.innerHTML='';
+  document.querySelectorAll('.sess').forEach(e=>e.classList.remove('on'));
+  try{
+    const r=await fetch('/v1/agent/sessions/'+encodeURIComponent(id)),j=await r.json();
+    const views=j.result||[];
+    if(!views.length){renderEmpty();return}
+    sessionId=id;
+    views.forEach(v=>{
+      if(v.role==='user')addMessage('user',v.text);
+      else if(v.role==='assistant')addMessage('assistant',v.text);
+      else if(v.role==='tool'){
+        addMessage('assistant','');
+        const card=addToolCard(v.tool_name,v.arguments||'{}');
+        settleToolCard(card,v.result||'',!!v.succeeded);
+      }
+    });
+    scrollDown();
+  }catch(e){renderEmpty()}
+  loadSessions();
+}
+
+// SSE over fetch: POST body plus a readable stream of events.
+async function send(){
+  if(running)return;
+  const input=$('input'), text=input.value.trim();
+  if(!text)return;
+  input.value='';input.style.height='auto';
+  addMessage('user',text);
+  addThinking();
+  running=true;
+  $('send').textContent='停止';$('send').classList.add('stop');
+  setStep('运行中',true);
+
+  const cards={};
+  let assistantBubble=null;
+  controller=new AbortController();
+
+  try{
+    const resp=await fetch('/v1/agent/chat',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({session_id:sessionId,message:text}),
+      signal:controller.signal
+    });
+    if(!resp.ok||!resp.body){
+      let msg='请求失败 ('+resp.status+')';
+      try{const j=await resp.json();msg=j.error?.message||msg}catch(e){}
+      throw new Error(msg);
+    }
+    const reader=resp.body.getReader(),decoder=new TextDecoder();
+    let buf='';
+    for(;;){
+      const {value,done}=await reader.read();
+      if(done)break;
+      buf+=decoder.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf('\n\n'))>=0){
+        const chunk=buf.slice(0,i);buf=buf.slice(i+2);
+        let name='message',data='';
+        chunk.split('\n').forEach(line=>{
+          if(line.startsWith('event:'))name=line.slice(6).trim();
+          else if(line.startsWith('data:'))data+=line.slice(5).trim();
+          else if(line.startsWith(':'))return; // keep-alive
+        });
+        if(!data)continue;
+        let payload;try{payload=JSON.parse(data)}catch(e){continue}
+
+        if(name==='session'){
+          if(payload.session_id){sessionId=payload.session_id;localStorage.setItem('va.session',sessionId)}
+          continue;
+        }
+        if(name==='end'){continue}
+        if(name!=='agent')continue;
+
+        const ev=payload;
+        if(ev.kind==='step'){setStep('第 '+ev.step+' 步',true);continue}
+        if(ev.kind==='text'){
+          stopThinking();
+          if(!assistantBubble)assistantBubble=addMessage('assistant','');
+          assistantBubble.querySelector('.txt').textContent+=ev.text;
+          scrollDown();continue;
+        }
+        if(ev.kind==='tool_start'){
+          stopThinking();
+          cards[ev.tool_call_id]=addToolCard(ev.tool_name,ev.arguments||'{}');
+          setStep('调用 '+ev.tool_name,true);
+          continue;
+        }
+        if(ev.kind==='tool_end'){
+          const card=cards[ev.tool_call_id];
+          if(card)settleToolCard(card,ev.result||'',!!ev.succeeded);
+          assistantBubble=null; // prose after a tool starts a fresh bubble
+          addThinking();
+          continue;
+        }
+        if(ev.kind==='error'){stopThinking();addMessage('assistant','⚠️ '+(ev.text||'出错了'));continue}
+        if(ev.kind==='done'){
+          stopThinking();
+          if(ev.text&&!assistantBubble)addMessage('assistant',ev.text);
+          else if(ev.text&&assistantBubble&&!assistantBubble.querySelector('.txt').textContent)assistantBubble.querySelector('.txt').textContent=ev.text;
+          continue;
+        }
+      }
+    }
+  }catch(e){
+    stopThinking();
+    if(e.name==='AbortError'){addMessage('assistant','已停止这一轮。')}
+    else{addMessage('assistant','⚠️ '+(e.message||'连接中断'))}
+  }finally{
+    running=false;controller=null;
+    $('send').textContent='发送';$('send').classList.remove('stop');
+    setStep('待命',false);
+    stopThinking();
+    loadSessions();
+  }
+}
+
+$('send').onclick=()=>{running?controller?.abort():send()};
+const input=$('input');
+input.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}
+});
+input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,190)+'px'});
+$('newChat').onclick=()=>{sessionId='';localStorage.removeItem('va.session');thread.innerHTML='';renderEmpty();loadSessions()};
+
+(async()=>{
+  await loadConfig();
+  renderEmpty();
+  if(sessionId){await replay(sessionId)}else{loadSessions()}
+})();
+</script>
+</body>
+</html>
