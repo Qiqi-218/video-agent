@@ -193,6 +193,22 @@
   .clip:last-child{border-bottom:0}
   .clip .t{color:var(--accent);flex:none}
 
+  /* Video preview. A video tool that cannot show you the video is not usable,
+     so a player is embedded next to every finished render and can be enlarged
+     when the side panel is too narrow to judge the result. */
+  .player{width:100%;border-radius:8px;background:#000;display:block;margin-top:7px;max-height:260px}
+  .playerbar{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  .mini{border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-size:11px;
+    padding:3px 8px;border-radius:7px;cursor:pointer}
+  .mini:hover{border-color:var(--accent);color:var(--accent)}
+  .modal{position:fixed;inset:0;background:oklch(0% 0 0/.72);display:none;place-items:center;z-index:80;padding:24px}
+  .modal.on{display:grid}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;
+    max-width:min(1180px,96vw);width:100%;box-shadow:0 18px 60px oklch(0% 0 0/.4)}
+  .modal .box header{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .modal .box h3{margin:0;font-size:13px;font-weight:650;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .modal video{width:100%;max-height:78vh;border-radius:9px;background:#000;display:block}
+
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
     padding:8px 15px;border-radius:9px;font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
   .toast.on{opacity:.95}
@@ -277,6 +293,12 @@
 </div>
 
 <div class="dropveil" id="veil"><div>松开即可上传素材</div></div>
+<div class="modal" id="modal"><div class="box">
+  <header><h3 id="modalTitle">预览</h3>
+    <a class="mini" id="modalOpen" target="_blank">新标签打开</a>
+    <button class="mini" id="modalClose">关闭 Esc</button></header>
+  <video id="modalVideo" controls playsinline preload="metadata"></video>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -517,9 +539,11 @@ async function loadOutputsPane(pane){
         +' <span class="pill '+(done?'ok':bad?'off':'busy')+'">'+esc(job.status)+'</span></h3>'
         +'<div class="kv">'+esc((job.output||'').split(/[\\/]/).pop()||job.id)+'</div>'
         +'<div class="bar"><i style="width:'+(job.progress||0)+'%"></i></div>'
-        +(done?'<div style="margin-top:6px"><a href="/v1/artifacts/'+job.id+'" target="_blank">打开 / 下载</a></div>':'')
+        +(done?playerCard(job):'')
+        +(job.error?'<div class="kv" style="color:var(--bad)">'+esc(job.error)+'</div>':'')
         +'</div>';
     }).join('');
+    await bindPlayers(pane);
   }catch(e){pane.innerHTML='<div class="emptyhint">读取失败。</div>'}
 }
 async function loadTimelinePane(pane){
@@ -536,9 +560,37 @@ async function loadTimelinePane(pane){
     const t=(await callTool('timeline_get',{id})).result;
     if(!t){pane.innerHTML='<div class="emptyhint">读不到时间线 '+esc(id)+'。</div>';return}
     const total=(t.items||[]).reduce((n,i)=>n+i.source_out_us-i.source_in_us,0);
-    pane.innerHTML='<div class="card"><h3>'+esc(t.id)+' <span class="pill">v'+t.revision+'</span></h3>'
-      +'<div class="kv">'+t.width+'×'+t.height+' · '+t.fps_num+'/'+t.fps_den+' fps · 共 '+fmtDur(total)+'</div></div>'
-      +'<div class="card">'+((t.items||[]).map(i=>'<div class="clip"><span class="t">'+fmtDur(i.source_in_us)+'–'+fmtDur(i.source_out_us)+'</span><span>'+esc((i.asset_id||'').replace('asset-','').slice(0,8))+'</span></div>').join('')||'<div class="kv">空时间线</div>')+'</div>';
+    // The newest render of this timeline is what the user wants to watch; show
+    // the draft clips underneath it so the preview and the edit agree.
+    const jobs=(await callTool('jobs_list',{})).result||[];
+    const rendered=jobs.filter(j=>j.timeline_id===t.id&&j.status==='completed')
+                       .sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)));
+    const newest=rendered[0];
+    let html='<div class="card"><h3>'+esc(t.id)+' <span class="pill">v'+t.revision+'</span></h3>'
+      +'<div class="kv">'+t.width+'×'+t.height+' · '+t.fps_num+'/'+t.fps_den+' fps · 共 '+fmtDur(total)+'</div></div>';
+    if(newest){
+      html+='<div class="card"><h3>这条时间线的成片</h3>'+playerCard(newest)+'</div>';
+    }else{
+      html+='<div class="card"><h3>还没有成片</h3><div class="kv">这条时间线还没渲染。对助手说「导出成 MP4」，'
+        +'或点下面的按钮生成一个低开销预览。</div>'
+        +'<div class="playerbar"><button class="mini" id="tlPreview">▶ 生成预览</button></div></div>';
+    }
+    html+='<div class="card"><h3>片段（'+(t.items||[]).length+'）</h3>'
+      +((t.items||[]).map((i,n)=>'<div class="clip"><span class="t">'+(n+1)+'. '+fmtDur(i.source_in_us)+'–'+fmtDur(i.source_out_us)
+        +'</span><span>'+esc((i.asset_id||'').replace('asset-','').slice(0,8))+'</span></div>').join('')||'<div class="kv">空时间线</div>')
+      +'</div>';
+    pane.innerHTML=html;
+    await bindPlayers(pane);
+    const pv=$('tlPreview');
+    if(pv)pv.onclick=async()=>{
+      pv.disabled=true;pv.textContent='提交中…';
+      // A preview is cheap but still a render, so it asks before starting.
+      if(confirm('生成这条时间线的预览？')){
+        const r=await callTool('render_submit',{timeline_id:t.id,preview:true});
+        if(r.ok){toast('预览已提交，稍后刷新查看');setTimeout(loadPane,4000)}
+        else{toast('提交失败：'+((r.error&&r.error.message)||''));pv.disabled=false;pv.textContent='▶ 生成预览'}
+      }else{pv.disabled=false;pv.textContent='▶ 生成预览'}
+    };
   }catch(e){pane.innerHTML='<div class="emptyhint">读取失败。</div>'}
 }
 
@@ -590,6 +642,57 @@ document.addEventListener('drop',e=>{
   if(!files.length){toast('只支持 MP4 / MOV / M4V / SRT / VTT');return}
   uploadFiles(files);
 });
+
+/* Video preview. The artifact route streams a render with range support, so a
+   plain <video src> is enough for both inline and enlarged playback. A video
+   tool that cannot show you the video is not usable. */
+function artifactURL(jobId){return '/v1/artifacts/'+encodeURIComponent(jobId)}
+function openPlayer(job){
+  const url=artifactURL(job.id);
+  $('modalTitle').textContent=((job.kind==='preview')?'预览':'成片')+' · '+((job.output||'').split(/[\\/]/).pop()||job.id);
+  $('modalOpen').href=url;
+  const v=$('modalVideo');
+  if(v.dataset.job!==job.id){v.src=url;v.dataset.job=job.id;v.load()}
+  $('modal').classList.add('on');
+  const p=v.play();if(p&&p.catch)p.catch(()=>{});
+}
+function closePlayer(){
+  const v=$('modalVideo');
+  try{v.pause()}catch(e){}
+  $('modal').classList.remove('on');
+}
+$('modalClose').onclick=closePlayer;
+$('modal').addEventListener('click',e=>{if(e.target.id==='modal')closePlayer()});
+// Escape closes the player first; the layout reset only fires when none is open.
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&$('modal').classList.contains('on')){closePlayer();e.stopPropagation();}
+},true);
+
+// One reusable card: the player, an enlarge action, download, and the render's
+// own validation numbers so the preview is also evidence the render is sound.
+function playerCard(job,extra){
+  const v=job.validation||{};
+  const meta=[v.width&&v.height?v.width+'×'+v.height:null,
+              v.duration_us?'时长 '+(v.duration_us/1e6).toFixed(1)+' 秒':null,
+              v.frames?v.frames+' 帧':null].filter(Boolean).join(' · ');
+  return '<video class="player" controls playsinline preload="metadata" src="'+artifactURL(job.id)+'"></video>'
+    +'<div class="playerbar">'
+    +'<button class="mini" data-play="'+esc(job.id)+'">◱ 放大预览</button>'
+    +'<a class="mini" href="'+artifactURL(job.id)+'" download>↓ 下载</a>'
+    +'<a class="mini" href="'+artifactURL(job.id)+'" target="_blank">新标签打开</a>'
+    +(extra||'')
+    +'</div>'
+    +(meta?'<div class="kv" style="margin-top:6px">'+esc(meta)+(v.decode_passed?' · 解码校验通过':'')+'</div>':'');
+}
+async function bindPlayers(root){
+  const buttons=[...root.querySelectorAll('[data-play]')];
+  if(!buttons.length)return;
+  const jobs=(await callTool('jobs_list',{})).result||[];
+  buttons.forEach(b=>b.onclick=()=>{
+    const job=jobs.find(j=>j.id===b.dataset.play);
+    if(job)openPlayer(job);else toast('找不到这个渲染任务');
+  });
+}
 
 /* send */
 async function send(){
