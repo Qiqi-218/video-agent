@@ -8,6 +8,8 @@ go vet ./...
 VIDEO_AGENT_INTEGRATION=1 VIDEO_AGENT_ACCEPTANCE_DIR="$PWD/data/p1-acceptance" go test -count=1 -v ./integration
 ```
 
+PR CI 使用同一组门槛：基础 job 执行 `go build ./cmd/video-agent`、`go test -race ./...` 和 `go vet ./...`；独立媒体 job 显式设置 `VIDEO_AGENT_INTEGRATION=1` 后执行上面的 integration 命令。FFmpeg/ffprobe 缺失会使媒体 job 失败。CI 仅上传 `report.json` 和测试日志，不上传生成的视频、数据库或密钥。
+
 普通测试覆盖版本冲突、锁定与连带位移、幂等重放、历史恢复、连续编辑、并发提交、跨项目引用、错误/取消状态等。FFmpeg 测试必须显式设置 `VIDEO_AGENT_INTEGRATION=1`，缺少工具时报错，不能把跳过媒体测试的普通测试结果当作 P1 完成证据。
 
 `TestP1EndToEnd` 通过真实 CLI 子进程生成 36 秒 MP4、预览、重排/替换/恢复成片，校验像素、音频、源哈希、历史和输出元数据；保留 `report.json`、`jobs.json`、`assets.json`、`history.json` 及视频文件。
