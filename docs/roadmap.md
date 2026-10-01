@@ -2,6 +2,8 @@
 
 按单人开发拆成可独立验收的阶段。以下是有效研发日估算，不是日历承诺。
 
+P1 的多素材确定性编辑实现和自验收见 [P1 验收记录](p1-acceptance.md)。P2–P4 仍待实施；P1 已提供必要的 JSON CLI 验收入口，不代表 P3 的完整 Agent 接入已经完成。
+
 | 阶段 | 内容 | 预计 |
 | --- | --- | --- |
 | P0 | 固定 3 个真实任务，冻结数据模型和输出验收 | 1–2 天 |
@@ -14,11 +16,11 @@
 
 ## 代码推进顺序
 
-1. 完善 `internal/domain` 和 `internal/edit`，先不接模型。
-2. 把 `internal/render.Plan` 接到 GoClip 的多源 FFmpeg 编译器。
-3. 用 SQLite 替换 `internal/store.MemoryStore`，加入任务和 revision 持久化。
+1. 已实现 `internal/domain` 和 `internal/edit` 的确定性编辑，不接模型。
+2. 已实现独立的多源 FFmpeg 编译器；复用 GoClip 的媒体执行与校验思路。
+3. 已用 SQLite 替换内存存储，保存任务和完整 revision 历史。
 4. 增加资产导入、ASR、代表帧和证据检索。
-5. 实现 JSON CLI，给已有编程 Agent 调用。
+5. 完善已有 JSON CLI 的 Agent 工具契约、API、任务观察和宿主接入。
 6. 使用真实素材进行 8 个任务验收，再决定内置 Agent 和 MCP。
 
 ## 后续演进
@@ -29,4 +31,3 @@
 - V0.5：旁白、图片、模板化动效和经过授权的素材补充。
 
 不因为参考项目提供了某项功能就自动加入路线；每项扩展都需要真实任务证明它节省了时间。
-

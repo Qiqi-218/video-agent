@@ -1,9 +1,12 @@
 /bin/
 /data/
 *.db
+*.db-wal
+*.db-shm
+*.test
 *.mp4
 *.mov
 *.wav
 *.log
 .env
-
+.DS_Store

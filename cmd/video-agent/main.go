@@ -3,53 +3,162 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/zylar06/video-agent/internal/app"
 	"github.com/zylar06/video-agent/internal/domain"
 	"github.com/zylar06/video-agent/internal/edit"
-	"github.com/zylar06/video-agent/internal/render"
 	"github.com/zylar06/video-agent/internal/store"
 )
 
+const help = `video-agent: local deterministic video editing (P1)
+
+Usage: video-agent [--data DIR] COMMAND [flags]
+  project create --id ID --name NAME
+  assets import --project ID --path FILE
+  assets list --project ID
+  timeline create --file JSON
+  timeline get --id ID [--revision N]
+  timeline history --id ID
+  edit apply --file JSON
+  render plan --timeline ID [--revision N] [--preview]
+  render export --timeline ID [--revision N] [--output FILE.mp4]
+  render preview --timeline ID [--revision N] [--output FILE.mp4]
+  jobs get --id ID
+
+JSON files accept '-' for stdin. All results/errors are JSON. Render is synchronous.
+Set VIDEO_AGENT_FFMPEG / VIDEO_AGENT_FFPROBE to override executable paths.
+`
+
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "demo" {
-		fmt.Fprintln(os.Stderr, "usage: video-agent demo")
-		os.Exit(2)
-	}
-
-	asset := domain.MediaAsset{ID: "asset-demo", Path: "demo.mp4", DurationUS: 10_000_000, Width: 1920, Height: 1080, Status: "ready"}
-	timeline := domain.TimelineRevision{
-		ID: "timeline-demo", Revision: 1, FPSNum: 30, FPSDen: 1, Width: 1920, Height: 1080,
-		Items: []domain.ClipItem{{ID: "clip-demo", AssetID: asset.ID, SourceInUS: 0, SourceOutUS: 5_000_000, StartFrame: 0, DurationFrames: 150}},
-	}
-
-	mem := store.NewMemoryStore()
-	if err := mem.Open(timeline); err != nil {
-		fatal(err)
-	}
-	engine := edit.NewEngine(mem)
-	next, err := engine.Apply(context.Background(), domain.EditOperation{
-		ID: "op-demo-trim", TimelineID: timeline.ID, BaseRevision: 1, Kind: domain.OpTrimClip,
-		TargetClipID: "clip-demo", DurationFrames: 90,
-	})
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	result, err := run(ctx, os.Args[1:])
 	if err != nil {
-		fatal(err)
+		code := "invalid_request"
+		if errors.Is(err, store.ErrConflict) {
+			code = "revision_conflict"
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			code = "not_found"
+		}
+		if errors.Is(err, store.ErrOperationReuse) {
+			code = "operation_id_reuse"
+		}
+		json.NewEncoder(os.Stderr).Encode(map[string]any{"error": map[string]string{"code": code, "message": err.Error()}, "result": result})
+		os.Exit(1)
 	}
-
-	plan, err := render.Compile(next, []domain.MediaAsset{asset})
-	if err != nil {
-		fatal(err)
+	if result != nil {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err = enc.Encode(result); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
-	output := map[string]any{"timeline": next, "render_plan": plan}
-	encoded, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		fatal(err)
-	}
-	fmt.Println(string(encoded))
 }
-
-func fatal(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+func readJSON(path string, out any) error {
+	var r io.Reader = os.Stdin
+	if path != "-" {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		r = f
+	}
+	d := json.NewDecoder(io.LimitReader(r, 4<<20))
+	d.DisallowUnknownFields()
+	if err := d.Decode(out); err != nil {
+		return err
+	}
+	var extra any
+	if err := d.Decode(&extra); err != io.EOF {
+		return errors.New("expected exactly one JSON value")
+	}
+	return nil
+}
+func run(ctx context.Context, args []string) (any, error) {
+	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
+		fmt.Print(help)
+		return nil, nil
+	}
+	global := flag.NewFlagSet("video-agent", flag.ContinueOnError)
+	global.SetOutput(io.Discard)
+	data := global.String("data", "data", "project data directory")
+	if err := global.Parse(args); err != nil {
+		return nil, err
+	}
+	args = global.Args()
+	if len(args) < 2 {
+		return nil, errors.New("expected command and subcommand; use --help")
+	}
+	command := args[0] + " " + args[1]
+	f := flag.NewFlagSet(command, flag.ContinueOnError)
+	f.SetOutput(io.Discard)
+	id := f.String("id", "", "id")
+	name := f.String("name", "", "project name")
+	project := f.String("project", "", "project id")
+	path := f.String("path", "", "media path")
+	file := f.String("file", "", "JSON file")
+	timeline := f.String("timeline", "", "timeline id")
+	revision := f.Int("revision", 0, "revision (0=current)")
+	output := f.String("output", "", "output MP4")
+	preview := f.Bool("preview", false, "preview plan")
+	if err := f.Parse(args[2:]); err != nil {
+		return nil, err
+	}
+	if f.NArg() != 0 || *revision < 0 {
+		return nil, errors.New("unexpected positional argument or invalid revision")
+	}
+	a, err := app.Open(*data)
+	if err != nil {
+		return nil, err
+	}
+	defer a.Store.Close()
+	switch command {
+	case "project create":
+		p := domain.Project{ID: *id, Name: *name}
+		return p, a.Store.CreateProject(p)
+	case "assets import":
+		return a.Tools.Import(ctx, a.Store, *project, *path)
+	case "assets list":
+		if _, err = a.Store.Project(*project); err != nil {
+			return nil, err
+		}
+		return a.Store.Assets(*project)
+	case "timeline create":
+		var t domain.TimelineRevision
+		if err = readJSON(*file, &t); err != nil {
+			return nil, err
+		}
+		return a.CreateTimeline(t)
+	case "timeline get":
+		if *revision == 0 {
+			return a.Store.Current(*id)
+		}
+		return a.Store.Revision(*id, *revision)
+	case "timeline history":
+		return a.Store.History(*id)
+	case "edit apply":
+		var op domain.EditOperation
+		if err = readJSON(*file, &op); err != nil {
+			return nil, err
+		}
+		return edit.NewEngine(a.Store).Apply(ctx, op)
+	case "render plan":
+		return a.Plan(*timeline, *revision, *preview)
+	case "render export", "render preview":
+		return a.Render(ctx, *timeline, *revision, command == "render preview", *output)
+	case "jobs get":
+		return a.Store.Job(*id)
+	default:
+		return nil, fmt.Errorf("unknown command %q; use --help", command)
+	}
 }

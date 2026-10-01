@@ -25,7 +25,13 @@
 - `EditOperation`：基于某个 revision 的类型化修改，拥有幂等 ID。
 - `MediaJob`：导入、分析、预览和导出任务，拥有可恢复状态。
 
-当前代码先实现这些对象和内存存储，后续将内存存储替换为 GoClip SQLite。
+P1 已实现 `Project`、`MediaAsset`、`TimelineRevision`、`EditOperation`、`RenderJob` 的 SQLite 存储。`Evidence` / `Catalog` 仍是待接入的分析检索接口。
+
+当前数据路径：JSON CLI → `app` / `edit.Engine` → SQLite；渲染由 `render.Compile` 生成固定计划，经 `render.Execute` 调用 FFmpeg，在 ffprobe 和完整解码验证后发布文件。媒体工具只接收 argv，不经过 shell。
+
+时间线采用一条连续主轨；源时间用微秒，输出时间用有理数帧率下的整数帧。裁剪更新源区间，插入/删除/重排重算起始帧。锁定同时保护内容和输出位置。提交在同一事务内进行 revision 比较、快照写入和幂等记录，保证多进程不会丢失修改。
+
+当前项目采用与 GoClip 相同的 SQLite 驱动和媒体验证方法，但使用独立 schema 与多源渲染实现，不直接导入 GoClip 的 `internal` 包或共享旧数据库。接口和已知限制见 [P1 使用说明](p1-usage.md)。
 
 ## Agent 运行原则
 
@@ -34,4 +40,3 @@
 建议工具：`read_project`、`analyze_assets`、`search_segments`、`propose_edit`、`commit_edit`、`restore_revision`、`render_preview`、`export_video`、`get_job`。
 
 编辑提交必须验证资产归属、源区间、时长、锁定约束、base revision 和操作幂等性。模型回复“完成”不代表媒体任务完成；只有真实产物通过元数据和完整解码检查才发布。
-

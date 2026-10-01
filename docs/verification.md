@@ -1,24 +1,19 @@
-# 验证说明
+# 验证入口
 
-当前骨架的验证目标是确认“可编译、可测试、编辑协议可重复执行”，不是证明完整的视频导出已经接通。
-
-## 本地命令
+当前验证范围为 P1，具体结果见 [P1 验收记录](p1-acceptance.md)。
 
 ```sh
-cd /Users/zylar/clip/video-agent
-go test ./...
-go run ./cmd/video-agent demo
+go test -race ./...
+go vet ./...
+VIDEO_AGENT_INTEGRATION=1 VIDEO_AGENT_ACCEPTANCE_DIR="$PWD/data/p1-acceptance" go test -count=1 -v ./integration
 ```
 
-`go test ./...` 覆盖资产引用、源时间范围、revision 冲突、锁定片段、幂等重放和插入操作。`demo` 输出一次裁剪后的 `TimelineRevision` 和 `render.Plan` JSON。
+普通测试覆盖版本冲突、锁定与连带位移、幂等重放、历史恢复、连续编辑、并发提交、跨项目引用、错误/取消状态等。FFmpeg 测试必须显式设置 `VIDEO_AGENT_INTEGRATION=1`，缺少工具时报错，不能把跳过媒体测试的普通测试结果当作 P1 完成证据。
 
-## 当前边界
+`TestP1EndToEnd` 通过真实 CLI 子进程生成 36 秒 MP4、预览、重排/替换/恢复成片，校验像素、音频、源哈希、历史和输出元数据；保留 `report.json`、`jobs.json`、`assets.json`、`history.json` 及视频文件。
 
-- `render.Plan` 只是确定性的媒体输入计划，不会调用 FFmpeg，也不会产生 MP4。
-- `MemoryStore` 只用于协议测试；正式实现要接 GoClip 的 SQLite、任务状态和文件产物。
-- `Catalog` 目前是接口，尚未接 ASR、代表帧或向量检索。
-- Agent 工具注册表已建立，但 JSON CLI/API 和模型循环留到后续阶段。
+`TestP1MediaBoundaries` 覆盖非关键帧裁剪、随时间变化的画面、分数帧率、可变帧率、无声/短音轨及渲染失败清理。
 
-## 进入 P1 的条件
+`TestP1ExternalSample` 使用显式传入的本地影片，生成横竖混合版本、预览与替换后的版本。设置 `VIDEO_AGENT_SAMPLE=/绝对路径/至少40秒.mp4` 后执行；测试不会自行下载视频。记录中的一次公开样片验收并不代替 P4 的 8 个真实创作任务验收。
 
-先用两段不同帧率、方向和音频布局的真实素材，把 `render.Plan` 编译为 MP4，并用 `ffprobe` 和完整解码检查产物；通过后再把内存存储替换为持久化实现。
+素材不足反馈、语义选段质量、字幕/BGM、后台任务恢复和 Web 预览属于 P2–P4，尚未通过产品级验收。
