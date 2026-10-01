@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/zylar06/video-agent/internal/analysis"
 	"github.com/zylar06/video-agent/internal/app"
 	"github.com/zylar06/video-agent/internal/catalog"
 	"github.com/zylar06/video-agent/internal/domain"
@@ -135,23 +136,18 @@ func (s *Service) call(ctx context.Context, name string, raw json.RawMessage) (a
 		return s.App.Store.PutEvidence(in)
 	case "analyze":
 		var in struct {
-			ProjectID string `json:"project_id"`
-			AssetID   string `json:"asset_id"`
+			ProjectID       string         `json:"project_id"`
+			AssetID         string         `json:"asset_id"`
+			SubtitlePath    string         `json:"subtitle_path,omitempty"`
+			AnalyzerVersion string         `json:"analyzer_version,omitempty"`
+			Provider        string         `json:"provider,omitempty"`
+			Parameters      map[string]any `json:"parameters,omitempty"`
+			Visual          bool           `json:"visual,omitempty"`
 		}
 		if err := decode(raw, &in); err != nil {
 			return nil, err
 		}
-		if _, err := s.App.Store.Asset(in.ProjectID, in.AssetID); err != nil {
-			return nil, err
-		}
-		evidence, err := s.App.Store.Evidence(in.ProjectID, []string{in.AssetID})
-		if err != nil {
-			return nil, err
-		}
-		if len(evidence) == 0 {
-			return nil, errors.New("model provider unavailable: no indexed evidence; add evidence or configure a P2 analyzer")
-		}
-		return map[string]any{"status": "completed", "project_id": in.ProjectID, "asset_id": in.AssetID, "evidence": evidence}, nil
+		return analysis.New(s.App.Store, s.App.Tools).Analyze(ctx, analysis.Request{ProjectID: in.ProjectID, AssetID: in.AssetID, SubtitlePath: in.SubtitlePath, AnalyzerVersion: in.AnalyzerVersion, Provider: in.Provider, Parameters: in.Parameters, Visual: in.Visual})
 	case "search":
 		var in catalog.SearchRequest
 		if err := decode(raw, &in); err != nil {

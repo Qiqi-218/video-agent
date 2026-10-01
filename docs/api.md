@@ -38,13 +38,20 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | 工具 | 输入重点 | 结果 |
 |---|---|---|
 | `evidence_add` | 完整 `Evidence`（项目、素材、源微秒范围及字幕/视觉内容） | 持久化、带素材内容哈希的来源证据 |
-| `analyze` | `project_id`、`asset_id` | 返回已索引证据；没有 P2 provider 时稳定返回 `model_unavailable` |
+| `analyze` | `project_id`、`asset_id`、可选 `subtitle_path`、`visual`、`provider`、`parameters` | 执行/复用分析运行，返回 `run`（阶段状态、缓存键）和带来源的 `evidence`；可用本地 SRT/VTT，无字幕且未配置 ASR 时返回 `model_unavailable` |
 | `search` | `project_id`、`query`、可选 `asset_ids`、`limit` | 稳定排序的证据命中；无命中为 `no_match` |
 | `proposal_create` | `timeline_id`、`query`、`limit` | 未提交的 `EditProposal`，含连续 revision 的插入操作 |
 | `render_submit` | `timeline_id`、可选 `revision`、`preview`、`filename` | 立即返回 `queued` job；文件名只能是 `.mp4` 基名 |
 | `jobs_get`、`jobs_list`、`jobs_cancel` | 任务 ID（list 无输入） | 查询、列表或取消任务 |
 
-P3 不把自动 ASR/视觉模型伪装为已实现：当前 `Evidence` 可由平台字幕、SRT 导入器或外部分析器写入；P2 provider 接入后复用同一对象与检索/提案工具。
+P2 使用 OpenAI-compatible HTTP 接口作为可选 provider。配置 `VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY`（或兼容的 `VIDEO_AGENT_TEXT_*`）启用转写；配置 `VIDEO_AGENT_VISION_*` 启用逐帧描述。provider 失败会持久化为 failed，不会伪装成完成。
+
+本地字幕与代表帧示例：
+
+```sh
+printf '%s\n' '{"project_id":"demo","asset_id":"asset-1","subtitle_path":"/workspace/input/video.srt","visual":true}' \
+  | bin/video-agent --data data/demo tool call --tool analyze --file -
+```
 
 ## JSON CLI
 

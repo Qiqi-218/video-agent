@@ -25,7 +25,7 @@
 - `EditOperation`：基于某个 revision 的类型化修改，拥有幂等 ID。
 - `MediaJob`：导入、分析、预览和导出任务，拥有可恢复状态。
 
-P1/P3 已实现 `Project`、`MediaAsset`、`TimelineRevision`、`EditOperation`、`RenderJob` 与 `Evidence` 的 SQLite 存储；P3 提供确定性证据检索与 proposal 边界。自动 ASR/视觉 provider 仍由 P2 接入。
+P1/P2/P3 已实现 `Project`、`MediaAsset`、`TimelineRevision`、`EditOperation`、`RenderJob`、`Evidence` 与 `AnalysisRun` 的 SQLite 存储；P2 的字幕/ASR 和代表帧分析产出统一 Evidence，P3 提供确定性证据检索与 proposal 边界。
 
 当前数据路径：JSON CLI → `app` / `edit.Engine` → SQLite；渲染由 `render.Compile` 生成固定计划，经 `render.Execute` 调用 FFmpeg，在 ffprobe 和完整解码验证后发布文件。媒体工具只接收 argv，不经过 shell。
 

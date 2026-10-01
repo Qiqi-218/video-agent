@@ -47,7 +47,7 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 2 {
+	if version > 3 {
 		return fail(errors.New("database is newer than this application"))
 	}
 	_, err = db.Exec(`
@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS evidence(project_id TEXT NOT NULL REFERENCES projects
 CREATE INDEX IF NOT EXISTS evidence_project_asset ON evidence(project_id,asset_id);
 CREATE INDEX IF NOT EXISTS evidence_project_cache ON evidence(project_id,cache_key);
 PRAGMA user_version=2;`)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if version < 3 {
+		_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS analysis_runs(project_id TEXT NOT NULL REFERENCES projects(id), asset_id TEXT NOT NULL, cache_key TEXT NOT NULL, body BLOB NOT NULL, PRIMARY KEY(project_id,asset_id,cache_key), FOREIGN KEY(project_id,asset_id) REFERENCES assets(project_id,id));
+CREATE INDEX IF NOT EXISTS analysis_runs_asset ON analysis_runs(project_id,asset_id);
+PRAGMA user_version=3;`)
 		if err != nil {
 			return fail(err)
 		}
@@ -238,6 +247,53 @@ func (s *Store) SearchEvidence(project, query string, assetIDs []string, limit i
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (s *Store) PutAnalysisRun(run domain.AnalysisRun) (domain.AnalysisRun, error) {
+	asset, err := s.Asset(run.ProjectID, run.AssetID)
+	if err != nil {
+		return run, err
+	}
+	if run.CacheKey == "" || run.AssetContentHash != asset.ContentHash {
+		return run, errors.New("analysis cache key and asset hash are required")
+	}
+	if run.Status != "queued" && run.Status != "running" && run.Status != "completed" && run.Status != "failed" && run.Status != "cancelled" {
+		return run, errors.New("invalid analysis status")
+	}
+	run.UpdatedAt = time.Now().UTC()
+	b, err := json.Marshal(run)
+	if err != nil {
+		return run, err
+	}
+	_, err = s.db.Exec(`INSERT INTO analysis_runs(project_id,asset_id,cache_key,body) VALUES(?,?,?,?) ON CONFLICT(project_id,asset_id,cache_key) DO UPDATE SET body=excluded.body`, run.ProjectID, run.AssetID, run.CacheKey, b)
+	return run, err
+}
+
+func (s *Store) AnalysisRun(project, asset, cacheKey string) (domain.AnalysisRun, error) {
+	var run domain.AnalysisRun
+	err := decode(s.db.QueryRow("SELECT body FROM analysis_runs WHERE project_id=? AND asset_id=? AND cache_key=?", project, asset, cacheKey), &run)
+	return run, err
+}
+
+func (s *Store) AnalysisRuns(project, asset string) ([]domain.AnalysisRun, error) {
+	rows, err := s.db.Query("SELECT body FROM analysis_runs WHERE project_id=? AND asset_id=? ORDER BY cache_key", project, asset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.AnalysisRun{}
+	for rows.Next() {
+		var b []byte
+		var run domain.AnalysisRun
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(b, &run); err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
 }
 func (s *Store) CreateTimeline(t domain.TimelineRevision) error {
 	if t.Revision != 1 {

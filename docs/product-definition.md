@@ -22,7 +22,7 @@ Video Agent：分析素材、管理时间线、执行编辑、渲染验证
 - Video Agent 负责“按照约束把它可靠地剪出来”。
 - CLI、API 和 MCP 是调用入口，不是产品本身的智能核心。
 
-当前交付状态：P1 已提供本地确定性视频编辑与导出的 JSON CLI；P3 已提供受限工具协议、异步导出任务和 loopback HTTP API，并完成真实素材的外部 Agent 回放。自动素材理解、模型驱动自然语言规划、MCP 和独立模型循环尚未实现。参赛描述应将“当前可演示能力”与“产品后续目标”分开，验收依据见 [P1 验收记录](p1-acceptance.md) 与 [P3 回放记录](evidence/p3-bilibili-replay.md)。
+当前交付状态：P1 已提供本地确定性视频编辑与导出的 JSON CLI；P2 已提供字幕/ASR、代表帧、缓存和有来源检索闭环；P3 已提供受限工具协议、异步导出任务和 loopback HTTP API，并完成真实素材的外部 Agent 回放。复杂语义理解、完整对话规划、MCP 和独立模型循环仍是后续增强。参赛描述应将“当前可演示能力”与“产品后续目标”分开，验收依据见 [P1 验收记录](p1-acceptance.md)、[P2 使用说明](p2-usage.md) 与 [P3 回放记录](evidence/p3-bilibili-replay.md)。
 
 ## 目标用户
 

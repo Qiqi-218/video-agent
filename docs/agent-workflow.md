@@ -3,7 +3,7 @@
 外部 Code Agent 通过 P3 API 充当“规划与操作调用者”，不是剪辑引擎本身。每轮都重新读取当前 revision，不能依赖对话记忆。
 
 1. `project_get`、`assets_list`、`timeline_get` 读取事实。
-2. `analyze` 读取已有来源证据；若为 `model_unavailable`，要求调用方先提供 SRT/视觉分析产生的 `evidence_add`，不能编造片段。
+2. `analyze` 运行或复用 P2 分析；可传 `subtitle_path` 和 `visual:true`，也可使用配置好的 ASR/视觉 provider。若为 `model_unavailable`，要求调用方提供字幕或配置 provider，不能编造片段。
 3. `search` 找到与自然语言目标相关的证据；`no_match` 时回答素材不足或请求澄清。
 4. `proposal_create` 只生成草案。审阅每条来源范围后逐条执行 `edit_apply`。
 5. 每个编辑后读取返回的 revision；遇到 `revision_conflict`，先 `timeline_get` 再重新规划，不重放旧 revision。
