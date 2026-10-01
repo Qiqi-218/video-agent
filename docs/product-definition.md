@@ -2,27 +2,27 @@
 
 ## 一句话定义
 
-Video Agent 是一个面向开发者的本地视频剪辑助手：用户可直接对话描述想要的成片，助手再通过结构化、可追溯、可恢复的工具完成素材理解、时间线编辑和媒体导出；Codex、Claude Code 等外部 Code Agent 也可以调用相同能力。
+Video Agent 是一个面向开发者的本地视频 Agent 工具链：它让 Codex、Claude Code 等 Code Agent 可以通过 CLI、API 或 MCP，以结构化、可追溯、可恢复的方式完成视频素材分析、时间线编辑和媒体导出。
 
-它不是剪映的替代品，也不是通用的 Code Agent。它的执行层可以被内置对话助手或外部 Code Agent 调用。
+它不是剪映的替代品，也不是通用的 Code Agent。它是一个被 Code Agent 调用的视频领域执行层。
 
 ## 分层定位
 
 ```text
 用户自然语言
       ↓
-对话助手 / Code Agent：理解需求、规划步骤、选择工具
+Code Agent：理解需求、规划步骤、选择工具
       ↓ CLI / API / MCP
-Video Agent：理解素材、管理时间线、执行编辑、渲染验证
+Video Agent：分析素材、管理时间线、执行编辑、渲染验证
       ↓
 本地视频文件与可审阅产物
 ```
 
-- 对话助手或 Code Agent 负责“应该怎么剪”。
+- Code Agent 负责“应该怎么剪”。
 - Video Agent 负责“按照约束把它可靠地剪出来”。
 - CLI、API 和 MCP 是调用入口，不是产品本身的智能核心。
 
-当前交付状态：P1 已提供本地确定性视频编辑与导出的 JSON CLI；素材理解、自然语言规划、对话界面、工作流、HTTP API、MCP 和独立模型循环尚未实现。参赛描述应将“当前可演示能力”与“产品后续目标”分开，验收依据见 [P1 验收记录](p1-acceptance.md)；产品方向见 [对话助手愿景](product-vision.md)。
+当前交付状态：P1 已提供本地确定性视频编辑与导出的 JSON CLI；素材理解、自然语言规划、HTTP API、MCP 和独立模型循环尚未实现。参赛描述应将“当前可演示能力”与“产品后续目标”分开，验收依据见 [P1 验收记录](p1-acceptance.md)。
 
 ## 目标用户
 

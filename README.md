@@ -1,12 +1,12 @@
 # Video Agent
 
-面向开发者的本地视频剪辑助手。用户可通过对话描述成片，助手通过素材证据生成可编辑时间线、提交局部修改，并调用可验证的媒体任务导出 MP4；外部 Code Agent 也能调用同一套工具。
+面向开发者的单人本地视频 Agent。项目目标是让编程 Agent 通过 CLI/API 读取素材证据、生成可编辑时间线、提交局部修改，并调用可验证的媒体任务导出 MP4。
 
 当前实现了 P1：本地多素材导入、SQLite 版本化时间线、确定性编辑、FFmpeg 预览与 MP4 导出。无需调用模型。ASR、视觉理解和完整 Agent 接入属于后续阶段。
 
 ## 产品定义
 
-这是一个面向开发者的本地视频剪辑助手，不是剪映替代品，也不是通用 Code Agent。对话助手或 Code Agent 负责理解需求和规划步骤，Video Agent 负责通过结构化时间线、版本化编辑和可验证渲染把视频可靠地做出来。完整定位见 [产品定义](docs/product-definition.md) 和 [对话助手愿景](docs/product-vision.md)。
+这是一个面向开发者的本地视频 Agent 工具链，不是剪映替代品，也不是通用 Code Agent。Code Agent 负责理解需求和规划步骤，Video Agent 负责通过结构化时间线、版本化编辑和可验证渲染把视频可靠地做出来。完整定位见 [产品定义](docs/product-definition.md)。
 
 ## 现在有什么
 
