@@ -55,6 +55,23 @@
   .iconbtn:hover{background:var(--line-soft);color:var(--ink)}
   .iconbtn.on{background:var(--accent-soft);color:var(--accent)}
 
+  /* Layout controls carry text: an unlabelled glyph gave no clue that it was the
+     only way to bring a hidden panel back. */
+  .layoutbar{display:flex;gap:5px;align-items:center}
+  .layoutbtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;
+    font-size:11.5px;padding:5px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;
+    display:inline-flex;align-items:center;gap:5px}
+  .layoutbtn:hover{border-color:var(--accent);color:var(--ink)}
+  .layoutbtn.on{background:var(--accent-soft);border-color:color-mix(in oklab,var(--accent) 40%,var(--line));color:var(--accent);font-weight:600}
+  .layoutbtn.reset{display:none;border-color:color-mix(in oklab,var(--warn) 45%,var(--line));color:var(--warn)}
+  .layoutbtn.reset.show{display:inline-flex}
+  .layoutbtn.reset:hover{border-color:var(--warn);color:var(--warn)}
+  @media (max-width:900px){
+    .layoutbtn{font-size:0;gap:0;padding:5px 8px}
+    .layoutbtn::first-letter{font-size:12px}
+    .layoutbtn.reset{font-size:11.5px}
+  }
+
   .panelhead{display:flex;align-items:center;justify-content:space-between;gap:8px;
     padding:8px 11px;border-bottom:1px solid var(--line);flex:none;min-height:44px}
   .panelhead h2{margin:0;font-size:12px;font-weight:650;color:var(--muted)}
@@ -178,8 +195,25 @@
     border:3px dashed var(--accent);display:none;place-items:center;z-index:60;pointer-events:none}
   .dropveil.on{display:grid}
   .dropveil div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 22px}
-  @media (max-width:1120px){.frame,.frame.no-left{grid-template-columns:246px minmax(0,1fr) 0}#right{display:none}}
-  @media (max-width:780px){.frame{grid-template-columns:0 minmax(0,1fr) 0}#left{display:none}}
+  /* Responsive sizing must not fight the toggles. These rules only change how
+     much room a visible panel takes; whether a panel is shown is decided by the
+     no-left / no-right classes, because a media-query display:none cannot be
+     overridden by the toggle and made "恢复布局" look broken.
+     Side columns use minmax(0, N) rather than a fixed N: with a fixed width the
+     right column could consume the whole grid and push the conversation
+     off-screen on a mid-size window. */
+  @media (max-width:1180px){
+    .frame{grid-template-columns:minmax(0,220px) minmax(0,1fr) minmax(0,290px)}
+    .frame.no-left{grid-template-columns:0 minmax(0,1fr) minmax(0,290px)}
+    .frame.no-right{grid-template-columns:minmax(0,220px) minmax(0,1fr) 0}
+    .frame.no-left.no-right{grid-template-columns:0 minmax(0,1fr) 0}
+  }
+  @media (max-width:860px){
+    .frame{grid-template-columns:minmax(0,200px) minmax(0,1fr) minmax(0,250px)}
+    .frame.no-left{grid-template-columns:0 minmax(0,1fr) minmax(0,250px)}
+    .frame.no-right{grid-template-columns:minmax(0,200px) minmax(0,1fr) 0}
+    .frame.no-left.no-right{grid-template-columns:0 minmax(0,1fr) 0}
+  }
 </style>
 </head>
 <body>
@@ -199,13 +233,16 @@
 
   <section class="col" id="center">
     <div class="topbar">
-      <button class="iconbtn" id="btnLeft" title="左栏">☰</button>
       <span class="pill" id="mCfg">检查模型…</span>
       <span class="pill" id="mTools">工具 —</span>
       <span class="spacer"></span>
       <span class="pill" id="mStep">待命</span>
-      <button class="iconbtn" id="btnTheme" title="主题">◐</button>
-      <button class="iconbtn on" id="btnRight" title="右栏">▤</button>
+      <div class="layoutbar">
+        <button class="layoutbtn" id="btnLeft" title="显示或隐藏左侧工作区">◧ 左栏</button>
+        <button class="layoutbtn" id="btnRight" title="显示或隐藏右侧面板">◨ 右栏</button>
+        <button class="layoutbtn" id="btnTheme" title="切换明暗主题">◐ 主题</button>
+        <button class="layoutbtn reset" id="btnResetLayout" title="恢复默认布局">↺ 恢复布局</button>
+      </div>
     </div>
 
     <div class="scroll" id="scroll"><div class="thread" id="thread"></div></div>
@@ -262,16 +299,38 @@ $('btnTheme').onclick=()=>{
   const n=document.documentElement.dataset.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme=n;localStorage.setItem('va.theme',n);
 };
-/* panel toggles */
+/* panel toggles.
+   A hidden panel must never be a dead end: the toggles are always rendered with
+   their own text label, each reflects its visible/hidden state, and a "恢复布局"
+   button appears the moment anything is hidden as an unmistakable way back. */
 function syncFrame(){
   const l=localStorage.getItem('va.left')!=='0', r=localStorage.getItem('va.right')!=='0';
   const f=$('frame');
   f.classList.toggle('no-left',!l);f.classList.toggle('no-right',!r);
   $('left').style.display=l?'':'none';$('right').style.display=r?'':'none';
-  $('btnLeft').classList.toggle('on',l);$('btnRight').classList.toggle('on',r);
+
+  const bl=$('btnLeft'), br=$('btnRight');
+  bl.classList.toggle('on',l);br.classList.toggle('on',r);
+  bl.textContent=l?'◧ 左栏':'◨ 左栏';
+  bl.title=l?'隐藏左侧工作区':'显示左侧工作区';
+  br.textContent=r?'◨ 右栏':'◧ 右栏';
+  br.title=r?'隐藏右侧面板':'显示右侧面板';
+  $('btnResetLayout').classList.toggle('show',!l||!r);
 }
-$('btnLeft').onclick=()=>{localStorage.setItem('va.left',localStorage.getItem('va.left')==='0'?'1':'0');syncFrame()};
-$('btnRight').onclick=()=>{localStorage.setItem('va.right',localStorage.getItem('va.right')==='0'?'1':'0');syncFrame()};
+function setPanels(left,right){
+  localStorage.setItem('va.left',left?'1':'0');
+  localStorage.setItem('va.right',right?'1':'0');
+  syncFrame();
+}
+$('btnLeft').onclick=()=>setPanels(localStorage.getItem('va.left')==='0',localStorage.getItem('va.right')!=='0');
+$('btnRight').onclick=()=>setPanels(localStorage.getItem('va.left')!=='0',localStorage.getItem('va.right')==='0');
+$('btnResetLayout').onclick=()=>{setPanels(true,true);toast('已恢复默认布局')};
+// Keyboard escape hatch for a layout the user cannot get out of by clicking.
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&(localStorage.getItem('va.left')==='0'||localStorage.getItem('va.right')==='0')){
+    setPanels(true,true);toast('已恢复默认布局');
+  }
+});
 syncFrame();
 
 /* thread */
@@ -454,7 +513,14 @@ async function loadOutputsPane(pane){
 }
 async function loadTimelinePane(pane){
   const id=localStorage.getItem('va.timeline');
-  if(!id){pane.innerHTML='<div class="emptyhint">助手创建时间线后这里会显示片段。<br>可以先让它「组装一条时间线」。</div>';return}
+  if(!id){
+    pane.innerHTML='<div class="emptyhint">助手创建时间线后这里会显示片段。<br>可以先让它「组装一条时间线」。</div>'
+      +'<div class="card"><h3>还没有时间线</h3><div class="kv">对助手说「把这些片段组装成一条时间线」，或先切换到「素材」看看现成的素材。</div>'
+      +'<div style="margin-top:7px"><button class="layoutbtn" id="tlToAssets">◧ 去看素材</button></div></div>';
+    const b=$('tlToAssets');
+    if(b)b.onclick=()=>document.querySelector('.tab[data-pane="assets"]').click();
+    return;
+  }
   try{
     const t=(await callTool('timeline_get',{id})).result;
     if(!t){pane.innerHTML='<div class="emptyhint">读不到时间线 '+esc(id)+'。</div>';return}
