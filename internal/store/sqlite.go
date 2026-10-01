@@ -112,6 +112,30 @@ func (s *Store) Project(id string) (p domain.Project, err error) {
 	err = decode(s.db.QueryRow("SELECT body FROM projects WHERE id=?", id), &p)
 	return
 }
+
+// Projects lists every project. Without this an agent has no way to discover
+// existing work: it can only guess ids, which reads to a user as the assistant
+// having forgotten everything.
+func (s *Store) Projects() ([]domain.Project, error) {
+	rows, err := s.db.Query("SELECT body FROM projects ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	projects := []domain.Project{}
+	for rows.Next() {
+		var b []byte
+		var p domain.Project
+		if err = rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(b, &p); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+	return projects, rows.Err()
+}
 func (s *Store) PutAsset(a domain.MediaAsset) (domain.MediaAsset, error) {
 	if err := a.Validate(); err != nil {
 		return a, err

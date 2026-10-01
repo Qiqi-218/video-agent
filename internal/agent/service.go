@@ -39,7 +39,7 @@ type Service struct{ App *app.App }
 func NewService(a *app.App) *Service { return &Service{App: a} }
 
 func (s *Service) Names() []string {
-	return []string{"analyze", "assets_import", "assets_list", "edit_apply", "evidence_add", "jobs_cancel", "jobs_get", "jobs_list", "project_create", "project_get", "proposal_create", "render_submit", "search", "timeline_create", "timeline_get", "timeline_history"}
+	return []string{"analyze", "assets_import", "assets_list", "edit_apply", "evidence_add", "jobs_cancel", "jobs_get", "jobs_list", "project_create", "project_get", "project_list", "proposal_create", "render_submit", "search", "timeline_create", "timeline_get", "timeline_history"}
 }
 
 func (s *Service) Call(ctx context.Context, name string, raw json.RawMessage) Envelope {
@@ -74,6 +74,30 @@ func (s *Service) call(ctx context.Context, name string, raw json.RawMessage) (a
 			return nil, err
 		}
 		return in, s.App.Store.CreateProject(in)
+	case "project_list":
+		var in struct{}
+		if err := decode(raw, &in); err != nil {
+			return nil, err
+		}
+		projects, err := s.App.Store.Projects()
+		if err != nil {
+			return nil, err
+		}
+		// Include the asset count so the agent does not have to walk every
+		// project with assets_list just to find the one holding footage.
+		type projectSummary struct {
+			domain.Project
+			AssetCount int `json:"asset_count"`
+		}
+		out := make([]projectSummary, 0, len(projects))
+		for _, p := range projects {
+			assets, err := s.App.Store.Assets(p.ID)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, projectSummary{Project: p, AssetCount: len(assets)})
+		}
+		return out, nil
 	case "project_get":
 		var in struct {
 			ID string `json:"id"`

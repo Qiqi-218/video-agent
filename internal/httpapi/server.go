@@ -24,9 +24,20 @@ import (
 //go:embed web/index.html
 var webFiles embed.FS
 
+//go:embed web/chat.html
+var chatPage []byte
+
+// New builds the local HTTP surface. The tool-calling chat routes are wired here
+// so the agent runtime reads the same model configuration as the rest of the
+// service.
 func New(a *app.App) http.Handler {
 	s := agent.NewService(a)
 	mux := http.NewServeMux()
+	agentRoutes(mux, a)
+	mux.HandleFunc("GET /chat", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(chatPage)
+	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
