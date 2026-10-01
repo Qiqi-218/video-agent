@@ -36,7 +36,11 @@ func Open(dir string) (*Store, error) {
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	u := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(dir, "video-agent.db"))}
+	// The leading slash is required: on Windows a path of "E:/dir/db" renders as
+	// "file://E:/dir/db", where "E:" is parsed as the URL host and SQLite fails
+	// with "out of memory". "file:///E:/dir/db" is the correct form and stays
+	// "file:///tmp/..." on Unix, so both platforms work.
+	u := url.URL{Scheme: "file", Path: "/" + filepath.ToSlash(filepath.Join(dir, "video-agent.db"))}
 	db, err := sql.Open("sqlite", u.String()+"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
