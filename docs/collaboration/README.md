@@ -1,5 +1,7 @@
 # 两人协作计划
 
+> 本文保留的是工程演进与协作档案，其中的 P1–P4、Code Agent 和任务编号不代表当前产品定位。当前产品以 [产品定义](../product-definition.md)、[需求](../requirements.md) 和 [路线图](../roadmap.md) 为准：面向创作者，以多维证据支撑自然语言控制剪辑。
+
 基线：P1 已完成，提交 `4f92e57`；[P1 验收](../p1-acceptance.md) 是后续回归门槛。本计划组织两人共同开发，产品仍是单人本地使用，不增加多人在线编辑功能。
 
 GitHub 任务链接由 [任务索引](github-index.md) 汇总。任务细节与依赖的初始规划保存在 [tasks.json](tasks.json)；执行进度、认领与评审以 GitHub Issue/PR 为准。

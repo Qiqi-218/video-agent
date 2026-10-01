@@ -21,7 +21,7 @@ import (
 	"github.com/zylar06/video-agent/internal/store"
 )
 
-const help = `video-agent: local deterministic video editing and P3 agent API
+const help = `video-agent: local long-video understanding and intelligent editing runtime
 
 Usage: video-agent [--data DIR] COMMAND [flags]
   project create --id ID --name NAME
@@ -39,9 +39,9 @@ Usage: video-agent [--data DIR] COMMAND [flags]
   tool call --tool TOOL --file JSON
   serve [--addr 127.0.0.1:8090]
 
-JSON files accept '-' for stdin. P1 render commands remain synchronous; P3
-render_submit is asynchronous when called through tool/API. The HTTP server only
-listens on loopback and exposes /v1/tools, /v1/jobs and /v1/artifacts.
+JSON files accept '-' for stdin. Direct render commands remain synchronous;
+render_submit is asynchronous when called through the internal tool/API. The
+HTTP server only listens on loopback and provides the local Web experience.
 Set VIDEO_AGENT_FFMPEG / VIDEO_AGENT_FFPROBE to override executable paths.
 `
 
@@ -153,7 +153,7 @@ func run(ctx context.Context, args []string) (any, error) {
 	revision := f.Int("revision", 0, "revision (0=current)")
 	output := f.String("output", "", "output MP4")
 	preview := f.Bool("preview", false, "preview plan")
-	toolName := f.String("tool", "", "P3 tool name")
+	toolName := f.String("tool", "", "internal tool name")
 	if err := f.Parse(args[2:]); err != nil {
 		return nil, err
 	}

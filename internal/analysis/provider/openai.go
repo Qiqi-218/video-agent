@@ -16,6 +16,7 @@ import (
 
 	"github.com/zylar06/video-agent/internal/analysis/asr"
 	"github.com/zylar06/video-agent/internal/domain"
+	"github.com/zylar06/video-agent/internal/media"
 )
 
 type Config struct {
@@ -40,6 +41,14 @@ func ConfigFromEnvAliases(prefixes ...string) Config {
 }
 
 type OpenAITranscriber struct{ Config Config }
+
+// QwenASR adapts Qwen3 ASR's OpenAI-compatible chat endpoint.  The service
+// accepts audio in five-minute windows; extracting compact audio here keeps
+// video bytes and browser uploads out of the model request.
+type QwenASR struct {
+	Config Config
+	Tools  media.Tools
+}
 
 type OpenAIText struct{ Config Config }
 
@@ -146,6 +155,76 @@ func (p OpenAITranscriber) Transcribe(ctx context.Context, asset domain.MediaAss
 		return nil, errors.New("ASR provider returned empty transcript")
 	}
 	return []asr.Cue{{Index: 1, StartUS: 0, EndUS: asset.DurationUS, Text: strings.TrimSpace(decoded.Text)}}, nil
+}
+
+func (p QwenASR) Transcribe(ctx context.Context, asset domain.MediaAsset) ([]asr.Cue, error) {
+	if p.Config.BaseURL == "" || p.Config.Model == "" || p.Config.APIKey == "" {
+		return nil, errors.New("model provider unavailable: ASR provider is not configured")
+	}
+	if !asset.HasAudio {
+		return nil, errors.New("asset has no audio track")
+	}
+	tools := p.Tools
+	if tools.FFmpeg == "" {
+		tools = media.Default()
+	}
+	const windowUS int64 = 240_000_000
+	var cues []asr.Cue
+	for start := int64(0); start < asset.DurationUS; start += windowUS {
+		end := min(start+windowUS, asset.DurationUS)
+		file, err := os.CreateTemp("", "video-agent-asr-*.mp3")
+		if err != nil {
+			return nil, err
+		}
+		path := file.Name()
+		_ = file.Close()
+		_, err = media.Run(ctx, tools.FFmpeg, "-nostdin", "-v", "error", "-ss", fmt.Sprintf("%.3f", float64(start)/1e6), "-t", fmt.Sprintf("%.3f", float64(end-start)/1e6), "-i", asset.Path, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "32k", "-y", path)
+		if err != nil {
+			_ = os.Remove(path)
+			return nil, err
+		}
+		data, readErr := os.ReadFile(path)
+		_ = os.Remove(path)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if len(data) == 0 || len(data) > 10<<20 {
+			return nil, errors.New("prepared ASR audio is empty or exceeds the provider limit")
+		}
+		payload := map[string]any{
+			"model":       p.Config.Model,
+			"messages":    []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_audio", "input_audio": map[string]string{"data": "data:audio/mpeg;base64," + base64.StdEncoding.EncodeToString(data)}}}}},
+			"asr_options": map[string]any{"enable_itn": true},
+		}
+		body, _ := json.Marshal(payload)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint(p.Config.BaseURL, "chat/completions"), bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+p.Config.APIKey)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client(p.Config).Do(req)
+		if err != nil {
+			return nil, err
+		}
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			return nil, fmt.Errorf("Qwen ASR returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		}
+		var decoded struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal(raw, &decoded); err != nil || len(decoded.Choices) == 0 || strings.TrimSpace(decoded.Choices[0].Message.Content) == "" {
+			return nil, errors.New("Qwen ASR returned empty transcript")
+		}
+		cues = append(cues, asr.Cue{Index: len(cues) + 1, StartUS: start, EndUS: end, Text: strings.TrimSpace(decoded.Choices[0].Message.Content)})
+	}
+	return cues, nil
 }
 
 type OpenAIVision struct{ Config Config }

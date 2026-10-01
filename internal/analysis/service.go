@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/zylar06/video-agent/internal/analysis/asr"
 	"github.com/zylar06/video-agent/internal/analysis/provider"
@@ -53,7 +54,11 @@ func New(s *store.Store, tools media.Tools) *Service {
 	visionConfig := provider.ConfigFromEnvAliases("VIDEO_AGENT_VISION", "AUTOCLIP_VISION")
 	var asrProvider ASRProvider
 	if asrConfig.BaseURL != "" && asrConfig.Model != "" && asrConfig.APIKey != "" {
-		asrProvider = provider.OpenAITranscriber{Config: asrConfig}
+		if strings.HasPrefix(asrConfig.Model, "qwen") {
+			asrProvider = provider.QwenASR{Config: asrConfig, Tools: tools}
+		} else {
+			asrProvider = provider.OpenAITranscriber{Config: asrConfig}
+		}
 	}
 	var visionProvider VisionProvider
 	if visionConfig.BaseURL != "" && visionConfig.Model != "" && visionConfig.APIKey != "" {

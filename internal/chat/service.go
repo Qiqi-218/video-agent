@@ -48,13 +48,13 @@ func (s Service) Handle(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 	if s.Text.Config.BaseURL != "" && s.Text.Config.Model != "" && s.Text.Config.APIKey != "" {
-		prompt := "将用户请求映射为 JSON，仅允许 goal=highlights,jokes,sports,trim_ends,preview；字段 query、duration_us、needs_edit。没有明确时长填 0。用户请求：" + req.Message
+		prompt := "将用户的本地视频剪辑请求映射为 JSON。goal 只能是 select、trim_ends 或 preview；query 是需要在字幕或画面证据中检索的简短关键词，不确定时保留用户的核心词；duration_us 是目标微秒时长，没有明确时长填 0；needs_edit 为 true。只返回 JSON，不要编造时间戳。用户请求：" + req.Message
 		if raw, err := s.Text.Complete(ctx, prompt); err == nil {
 			var modelIntent Intent
 			if json.Unmarshal([]byte(raw), &modelIntent) == nil && valid(modelIntent.Goal) {
-				// Keep the local, searchable vocabulary stable; the model supplies
-				// intent and duration, but must not invent an unindexed query.
-				modelIntent.Query = intent.Query
+				if strings.TrimSpace(modelIntent.Query) == "" {
+					modelIntent.Query = intent.Query
+				}
 				if modelIntent.DurationUS == 0 {
 					modelIntent.DurationUS = intent.DurationUS
 				}
@@ -76,8 +76,10 @@ var durationRE = regexp.MustCompile(`([0-9]+)\s*(分钟|分|秒)`)
 
 func classify(message string) Intent {
 	m := strings.ToLower(strings.TrimSpace(message))
-	intent := Intent{Goal: "highlights", Query: "高能", NeedsEdit: true}
+	intent := Intent{Goal: "select", Query: queryWords(m), NeedsEdit: true}
 	switch {
+	case strings.Contains(m, "高能"):
+		intent = Intent{Goal: "highlights", Query: "高能", NeedsEdit: true}
 	case strings.Contains(m, "笑"):
 		intent = Intent{Goal: "jokes", Query: "笑", NeedsEdit: true}
 	case strings.Contains(m, "进球") || strings.Contains(m, "庆祝"):
@@ -99,7 +101,16 @@ func classify(message string) Intent {
 }
 
 func valid(goal string) bool {
-	return goal == "highlights" || goal == "jokes" || goal == "sports" || goal == "trim_ends" || goal == "preview"
+	return goal == "select" || goal == "highlights" || goal == "jokes" || goal == "sports" || goal == "trim_ends" || goal == "preview"
+}
+
+func queryWords(message string) string {
+	for _, phrase := range []string{"剪成", "做成", "保留", "删掉", "删除", "所有", "片段", "部分", "视频", "高能集锦"} {
+		message = strings.ReplaceAll(message, phrase, " ")
+	}
+	message = durationRE.ReplaceAllString(message, " ")
+	message = strings.NewReplacer("，", " ", "。", " ", ",", " ", ".", " ").Replace(message)
+	return strings.Join(strings.Fields(message), " ")
 }
 func reply(i Intent, count int) string {
 	if i.Goal == "trim_ends" {
