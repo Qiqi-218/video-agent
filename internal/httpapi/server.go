@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"embed"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,9 +15,25 @@ import (
 	"github.com/zylar06/video-agent/internal/app"
 )
 
+//go:embed web/index.html
+var webFiles embed.FS
+
 func New(a *app.App) http.Handler {
 	s := agent.NewService(a)
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		data, err := webFiles.ReadFile("web/index.html")
+		if err != nil {
+			http.Error(w, "web UI unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
 	mux.HandleFunc("GET /v1/health", func(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: map[string]string{"status": "ok"}})
 	})

@@ -13,6 +13,7 @@
 - P3 异步任务：任务提交、状态查询、进度、取消、失败状态和任务列表，P1 同步 CLI 保持兼容。
 - P3 外部 Agent 工具协议：统一 v1 JSON envelope、证据写入、搜索、proposal、编辑提交、冲突处理和版本恢复。
 - P3 本地 HTTP API：loopback 服务、受控 MP4 产物读取、HTTP Range 播放和路径穿越防护。
+- 最小 Web UI：浏览器中创建项目、导入本地视频、执行分析和搜索片段，不需要手写 JSON。
 - Docker/Windows 部署：Dockerfile、Compose 和 `video-agent.bat`，Go/FFmpeg/ffprobe 一起打包。
 - 真实素材回放：使用指定 B 站视频完成导入、证据检索、连续 5 次编辑、冲突恢复、异步导出和取消验证。
 - P2 分析闭环：支持 SRT/VTT 导入、可选 OpenAI-compatible ASR/视觉 provider、最多 48 张代表帧、SQLite 分析运行缓存，以及带来源时间戳的检索/proposal。
@@ -22,7 +23,7 @@
 
 - P2 的高级理解：场景切分、embedding/情绪与节奏评分，以及针对复杂创作目标的质量验收。
 - P2 的模型 provider 需要用户配置 API；没有 provider 时仍可用本地字幕和代表帧完成可追溯闭环。
-- P4 产品交互：浏览器 Web 界面、对话式编辑、时间线预览、局部修改交互。
+- P4 产品交互：完整时间线 Web 编辑器、对话式编辑、预览和局部修改交互。
 - P4 成片能力：中文字幕渲染、BGM/混音、9:16 fit/crop、复杂构图和更细的风格控制。
 - P4 可靠性：服务重启后的任务恢复、自动重试、临时文件回收和工程目录迁移后的路径修复。
 - MCP 与内置自主 Agent 循环：目前不是必选范围，外部 Code Agent 通过 CLI/HTTP 调用即可。
@@ -111,6 +112,14 @@ integration/           真实媒体和 CLI 端到端验收
 ## 下一步
 
 下一阶段为 P4：字幕/BGM、Web 适配、对话式交互和中断恢复。P2 的 provider、场景理解与成片质量仍持续迭代。
+
+启动 Web 页面：
+
+```sh
+bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
+```
+
+然后打开 <http://127.0.0.1:8090/>。页面中的视频路径必须是运行服务的电脑可访问的路径；Docker 中使用 `/workspace/input/...`。
 
 ## 两人协作开发
 
