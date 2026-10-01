@@ -10,3 +10,6 @@
 *.log
 .env
 .DS_Store
+/workspace/data/
+/workspace/input/*
+!/workspace/input/.gitkeep

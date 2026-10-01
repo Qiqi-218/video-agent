@@ -33,6 +33,33 @@ VIDEO_AGENT_INTEGRATION=1 VIDEO_AGENT_ACCEPTANCE_DIR="$PWD/data/p1-acceptance" g
 
 剪自己的素材请按 [P1 使用说明](docs/p1-usage.md) 操作；[验收记录](docs/p1-acceptance.md) 说明实际验证范围与限制。原内存 `demo` 已被真实 CLI 替代。
 
+## Docker 与 Windows
+
+Docker 版本把 Go、FFmpeg 和 ffprobe 打进镜像；Windows 10/11 用户只需安装并启动 Docker Desktop 的 Linux containers 模式，不需要单独装 Go 或 FFmpeg。素材、数据库和导出文件会留在仓库的 `workspace/`，不会消失在容器内。
+
+PowerShell 中执行：
+
+```powershell
+git clone https://github.com/zylar06/video-agent.git
+cd video-agent
+.\video-agent.bat --help
+```
+
+首次调用会自动构建镜像。把视频放入 `workspace\input\`，再使用容器内路径执行命令：
+
+```powershell
+.\video-agent.bat project create --id demo --name "我的项目"
+.\video-agent.bat assets import --project demo --path /workspace/input/video-1.mp4
+```
+
+也可以在 macOS/Linux 使用相同 Compose 配置：
+
+```sh
+docker compose run --rm --build video-agent --data /workspace/data --help
+```
+
+完整的 Windows 操作、时间线 JSON 例子、备份和排错见 [Docker 使用说明](docs/docker.md)。当前 P1 是命令行工具，Docker 会启动一次命令并退出；后续 P3 HTTP/API 服务会复用同一镜像。
+
 ## 目录
 
 ```text

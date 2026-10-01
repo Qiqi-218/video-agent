@@ -1,0 +1,11 @@
+services:
+  video-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zylar06/video-agent:local
+    working_dir: /workspace
+    volumes:
+      - ./workspace:/workspace
+    entrypoint: ["/usr/local/bin/video-agent"]
+    command: ["--help"]
