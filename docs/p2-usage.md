@@ -17,7 +17,9 @@ SRT 和 VTT 均支持。重复调用会按素材内容哈希、分析器版本�
 
 ## OpenAI-compatible provider
 
-ASR：`VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY`。视觉：`VIDEO_AGENT_VISION_BASE_URL`、`VIDEO_AGENT_VISION_MODEL`、`VIDEO_AGENT_VISION_API_KEY`。Base URL 可填服务根地址或带 `/v1` 的地址。ASR 使用 `/audio/transcriptions`，视觉使用 `/chat/completions`。
+ASR：`VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY`。视觉：`VIDEO_AGENT_VISION_BASE_URL`、`VIDEO_AGENT_VISION_MODEL`、`VIDEO_AGENT_VISION_API_KEY`，也会自动兼容 GoClip 的 `AUTOCLIP_VISION_*` 环境变量。Base URL 可填服务根地址或带 `/v1` 的地址。ASR 使用 `/audio/transcriptions`，视觉使用 `/chat/completions`。
+
+GoClip 的 `AUTOCLIP_TEXT_*` 是文本/规划模型，不是音频转写接口，不能直接当 ASR 使用；没有独立 ASR 时请使用 GoClip 下载的 SRT，或额外配置 `VIDEO_AGENT_ASR_*`。GoClip 网页中保存的密钥位于其加密数据库，Video Agent 不会直接读取或复制密钥。
 
 provider 是可选的；没有密钥时，字幕导入和本地代表帧仍可用。provider 错误会保存为 failed 运行，修复配置后用相同请求重试即可。
 

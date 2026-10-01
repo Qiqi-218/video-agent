@@ -44,7 +44,7 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | `render_submit` | `timeline_id`、可选 `revision`、`preview`、`filename` | 立即返回 `queued` job；文件名只能是 `.mp4` 基名 |
 | `jobs_get`、`jobs_list`、`jobs_cancel` | 任务 ID（list 无输入） | 查询、列表或取消任务 |
 
-P2 使用 OpenAI-compatible HTTP 接口作为可选 provider。配置 `VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY`（或兼容的 `VIDEO_AGENT_TEXT_*`）启用转写；配置 `VIDEO_AGENT_VISION_*` 启用逐帧描述。provider 失败会持久化为 failed，不会伪装成完成。
+P2 使用 OpenAI-compatible HTTP 接口作为可选 provider。配置 `VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY` 启用转写；配置 `VIDEO_AGENT_VISION_*` 或 GoClip 的 `AUTOCLIP_VISION_*` 启用逐帧描述。`AUTOCLIP_TEXT_*` 是文本模型，不会被误当成 ASR。provider 失败会持久化为 failed，不会伪装成完成。
 
 本地字幕与代表帧示例：
 

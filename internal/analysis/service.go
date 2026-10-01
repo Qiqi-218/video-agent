@@ -49,11 +49,8 @@ type Service struct {
 }
 
 func New(s *store.Store, tools media.Tools) *Service {
-	asrConfig := provider.ConfigFromEnv("VIDEO_AGENT_ASR")
-	if asrConfig.BaseURL == "" {
-		asrConfig = provider.ConfigFromEnv("VIDEO_AGENT_TEXT")
-	}
-	visionConfig := provider.ConfigFromEnv("VIDEO_AGENT_VISION")
+	asrConfig := provider.ConfigFromEnvAliases("VIDEO_AGENT_ASR", "AUTOCLIP_ASR")
+	visionConfig := provider.ConfigFromEnvAliases("VIDEO_AGENT_VISION", "AUTOCLIP_VISION")
 	var asrProvider ASRProvider
 	if asrConfig.BaseURL != "" && asrConfig.Model != "" && asrConfig.APIKey != "" {
 		asrProvider = provider.OpenAITranscriber{Config: asrConfig}

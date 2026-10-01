@@ -27,6 +27,18 @@ func ConfigFromEnv(prefix string) Config {
 	return Config{BaseURL: os.Getenv(prefix + "_BASE_URL"), Model: os.Getenv(prefix + "_MODEL"), APIKey: os.Getenv(prefix + "_API_KEY"), HTTPClient: http.DefaultClient}
 }
 
+// ConfigFromEnvAliases lets Video Agent reuse compatible GoClip environment
+// groups without sharing GoClip's encrypted SQLite secrets database.
+func ConfigFromEnvAliases(prefixes ...string) Config {
+	for _, prefix := range prefixes {
+		config := ConfigFromEnv(prefix)
+		if config.BaseURL != "" || config.Model != "" || config.APIKey != "" {
+			return config
+		}
+	}
+	return Config{HTTPClient: http.DefaultClient}
+}
+
 type OpenAITranscriber struct{ Config Config }
 
 func (p OpenAITranscriber) Transcribe(ctx context.Context, asset domain.MediaAsset) ([]asr.Cue, error) {
