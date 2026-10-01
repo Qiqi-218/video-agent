@@ -41,6 +41,42 @@ func ConfigFromEnvAliases(prefixes ...string) Config {
 
 type OpenAITranscriber struct{ Config Config }
 
+type OpenAIText struct{ Config Config }
+
+func (p OpenAIText) Complete(ctx context.Context, prompt string) (string, error) {
+	if p.Config.BaseURL == "" || p.Config.Model == "" || p.Config.APIKey == "" {
+		return "", errors.New("model provider unavailable: text provider is not configured")
+	}
+	payload := map[string]any{"model": p.Config.Model, "temperature": 0, "messages": []any{map[string]string{"role": "system", "content": "你是本地视频剪辑助手。只按用户请求提取剪辑意图，不要编造时间戳。"}, map[string]string{"role": "user", "content": prompt}}}
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint(p.Config.BaseURL, "chat/completions"), bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+p.Config.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client(p.Config).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("text provider returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var decoded struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil || len(decoded.Choices) == 0 || strings.TrimSpace(decoded.Choices[0].Message.Content) == "" {
+		return "", errors.New("text provider returned empty response")
+	}
+	return strings.TrimSpace(decoded.Choices[0].Message.Content), nil
+}
+
 func (p OpenAITranscriber) Transcribe(ctx context.Context, asset domain.MediaAsset) ([]asr.Cue, error) {
 	if p.Config.BaseURL == "" || p.Config.Model == "" || p.Config.APIKey == "" {
 		return nil, errors.New("model provider unavailable: ASR provider is not configured")

@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/zylar06/video-agent/internal/agent"
+	"github.com/zylar06/video-agent/internal/analysis"
+	"github.com/zylar06/video-agent/internal/analysis/provider"
 	"github.com/zylar06/video-agent/internal/app"
+	"github.com/zylar06/video-agent/internal/chat"
 )
 
 //go:embed web/index.html
@@ -39,6 +42,20 @@ func New(a *app.App) http.Handler {
 	})
 	mux.HandleFunc("GET /v1/tools", func(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: s.Names()})
+	})
+	mux.HandleFunc("POST /v1/chat", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var input chat.Request
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		result, err := (chat.Service{Store: a.Store, Text: provider.OpenAIText{Config: provider.ConfigFromEnvAliases("VIDEO_AGENT_TEXT", "AUTOCLIP_TEXT")}, Analyzer: analysis.New(a.Store, a.Tools)}).Handle(r.Context(), input)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: result})
 	})
 	mux.HandleFunc("POST /v1/tools/{name}", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()

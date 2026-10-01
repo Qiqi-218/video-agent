@@ -21,6 +21,7 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/v1/health` | 本地服务健康状态 |
+| `POST` | `/v1/chat` | 将自然语言剪辑请求解析为意图，并返回有来源候选 |
 | `GET` | `/v1/tools` | 可调用工具名称 |
 | `POST` | `/v1/tools/{tool}` | 调用工具，body 是 JSON 输入 |
 | `GET` | `/v1/jobs/{id}` | 读取异步导出任务 |
@@ -45,6 +46,12 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | `jobs_get`、`jobs_list`、`jobs_cancel` | 任务 ID（list 无输入） | 查询、列表或取消任务 |
 
 P2 使用 OpenAI-compatible HTTP 接口作为可选 provider。配置 `VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY` 启用转写；配置 `VIDEO_AGENT_VISION_*` 或 GoClip 的 `AUTOCLIP_VISION_*` 启用逐帧描述。`AUTOCLIP_TEXT_*` 是文本模型，不会被误当成 ASR。provider 失败会持久化为 failed，不会伪装成完成。
+
+对话请求示例：
+
+```json
+{"project_id":"demo","asset_id":"asset-1","message":"剪成 1 分钟高能集锦","subtitle_path":"/workspace/input/video.srt","visual":true}
+```
 
 本地字幕与代表帧示例：
 
