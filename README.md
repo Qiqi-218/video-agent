@@ -1,12 +1,12 @@
 # Video Agent
 
-面向开发者的单人本地视频 Agent。项目目标是让编程 Agent 通过 CLI/API 读取素材证据、生成可编辑时间线、提交局部修改，并调用可验证的媒体任务导出 MP4。
+面向开发者的本地视频剪辑助手。用户可通过对话描述成片，助手通过素材证据生成可编辑时间线、提交局部修改，并调用可验证的媒体任务导出 MP4；外部 Code Agent 也能调用同一套工具。
 
 当前实现了 P1：本地多素材导入、SQLite 版本化时间线、确定性编辑、FFmpeg 预览与 MP4 导出。无需调用模型。ASR、视觉理解和完整 Agent 接入属于后续阶段。
 
 ## 产品定义
 
-这是一个面向开发者的本地视频 Agent 工具链，不是剪映替代品，也不是通用 Code Agent。Code Agent 负责理解需求和规划步骤，Video Agent 负责通过结构化时间线、版本化编辑和可验证渲染把视频可靠地做出来。完整定位见 [产品定义](docs/product-definition.md)。
+这是一个面向开发者的本地视频剪辑助手，不是剪映替代品，也不是通用 Code Agent。对话助手或 Code Agent 负责理解需求和规划步骤，Video Agent 负责通过结构化时间线、版本化编辑和可验证渲染把视频可靠地做出来。完整定位见 [产品定义](docs/product-definition.md) 和 [对话助手愿景](docs/product-vision.md)。
 
 ## 现在有什么
 
@@ -53,5 +53,9 @@ integration/           真实媒体和 CLI 端到端验收
 ## 下一步
 
 下一阶段为 P2：字幕/ASR、代表帧、证据缓存、候选检索和初稿规划。P3 再完善 Agent 工具契约、API 与任务观察；P4 处理字幕/BGM、Web 适配和中断恢复。
+
+## 两人协作开发
+
+任务已按 A（媒体与智能）/ B（平台与交互）拆分，包含依赖、模块边界和验收条件。先看 [协作计划](docs/collaboration/README.md)、[GitHub 任务索引](docs/collaboration/github-index.md) 和 [贡献指南](CONTRIBUTING.md)，再认领 Issue。产品仍面向单人本地使用。
 
 完整范围见 [产品定义](docs/product-definition.md)、[需求](docs/requirements.md)、[架构](docs/architecture.md)、[路线图](docs/roadmap.md)、[调研结论](docs/research.md) 和 [验证说明](docs/verification.md)。
