@@ -52,9 +52,9 @@ func (s Service) Handle(ctx context.Context, req Request) (Result, error) {
 		if raw, err := s.Text.Complete(ctx, prompt); err == nil {
 			var modelIntent Intent
 			if json.Unmarshal([]byte(raw), &modelIntent) == nil && valid(modelIntent.Goal) {
-				if modelIntent.Query == "" {
-					modelIntent.Query = intent.Query
-				}
+				// Keep the local, searchable vocabulary stable; the model supplies
+				// intent and duration, but must not invent an unindexed query.
+				modelIntent.Query = intent.Query
 				if modelIntent.DurationUS == 0 {
 					modelIntent.DurationUS = intent.DurationUS
 				}
