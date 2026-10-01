@@ -2,7 +2,7 @@
 
 面向开发者的单人本地视频 Agent。项目目标是让编程 Agent 通过 CLI/API 读取素材证据、生成可编辑时间线、提交局部修改，并调用可验证的媒体任务导出 MP4。
 
-当前实现了 P1：本地多素材导入、SQLite 版本化时间线、确定性编辑、FFmpeg 预览与 MP4 导出。无需调用模型。ASR、视觉理解和完整 Agent 接入属于后续阶段。
+当前实现了 P1 与 P3 运行时：本地多素材导入、SQLite 版本化时间线、确定性编辑、FFmpeg 预览/导出，以及受限的异步任务、外部 Agent 工具协议与 loopback HTTP API。自动 ASR、视觉理解和模型驱动的初稿规划仍属于 P2。
 
 ## 产品定义
 
@@ -58,7 +58,13 @@ cd video-agent
 docker compose run --rm --build video-agent --data /workspace/data --help
 ```
 
-完整的 Windows 操作、时间线 JSON 例子、备份和排错见 [Docker 使用说明](docs/docker.md)。当前 P1 是命令行工具，Docker 会启动一次命令并退出；后续 P3 HTTP/API 服务会复用同一镜像。
+完整的 Windows 操作、时间线 JSON 例子、备份和排错见 [Docker 使用说明](docs/docker.md)。P1 命令会启动一次容器并退出；运行 P3 本地 API 时使用：
+
+```sh
+docker compose run --rm --service-ports video-agent --data /workspace/data serve --addr 0.0.0.0:8090
+```
+
+容器内的 `0.0.0.0` 仅用于映射到 Docker 的 loopback 端口；二进制直接运行时 `serve` 只允许 loopback。工具协议、API 与外部 Agent 回放见 [P3 API](docs/api.md) 和 [Agent 调用流程](docs/agent-workflow.md)。
 
 ## 目录
 
@@ -79,7 +85,7 @@ integration/           真实媒体和 CLI 端到端验收
 
 ## 下一步
 
-下一阶段为 P2：字幕/ASR、代表帧、证据缓存、候选检索和初稿规划。P3 再完善 Agent 工具契约、API 与任务观察；P4 处理字幕/BGM、Web 适配和中断恢复。
+下一阶段为 P2：字幕/ASR、代表帧、自动证据缓存和模型驱动的初稿规划。P3 的受限工具/API、任务观察和外部 Agent 回放已落地；P4 处理字幕/BGM、Web 适配和中断恢复。
 
 ## 两人协作开发
 

@@ -143,6 +143,7 @@ type RenderJob struct {
 	Revision   int             `json:"revision"`
 	Kind       string          `json:"kind"`
 	Status     string          `json:"status"`
+	Progress   int             `json:"progress"`
 	Output     string          `json:"output"`
 	Error      string          `json:"error,omitempty"`
 	UpdatedAt  time.Time       `json:"updated_at"`

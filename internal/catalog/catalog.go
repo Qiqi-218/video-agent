@@ -3,19 +3,11 @@ package catalog
 import (
 	"context"
 	"sort"
+
+	"github.com/zylar06/video-agent/internal/domain"
 )
 
-type Evidence struct {
-	ID            string   `json:"id"`
-	ProjectID     string   `json:"project_id"`
-	AssetID       string   `json:"asset_id"`
-	StartUS       int64    `json:"start_us"`
-	EndUS         int64    `json:"end_us"`
-	AssetHash     string   `json:"asset_content_hash,omitempty"`
-	Transcript    string   `json:"transcript,omitempty"`
-	VisualSummary string   `json:"visual_summary,omitempty"`
-	FrameRefs     []string `json:"frame_refs,omitempty"`
-}
+type Evidence = domain.Evidence
 
 type SearchRequest struct {
 	ProjectID string   `json:"project_id"`

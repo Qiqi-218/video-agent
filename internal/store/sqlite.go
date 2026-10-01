@@ -10,8 +10,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
+	"github.com/zylar06/video-agent/internal/catalog"
 	"github.com/zylar06/video-agent/internal/domain"
 	_ "modernc.org/sqlite"
 )
@@ -44,7 +47,7 @@ func Open(dir string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fail(errors.New("database is newer than this application"))
 	}
 	_, err = db.Exec(`
@@ -53,10 +56,19 @@ CREATE TABLE IF NOT EXISTS assets(project_id TEXT NOT NULL REFERENCES projects(i
 CREATE TABLE IF NOT EXISTS timelines(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), revision INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS revisions(timeline_id TEXT NOT NULL REFERENCES timelines(id), revision INTEGER NOT NULL, body BLOB NOT NULL, PRIMARY KEY(timeline_id,revision));
 CREATE TABLE IF NOT EXISTS operations(timeline_id TEXT NOT NULL, id TEXT NOT NULL, payload BLOB NOT NULL, revision INTEGER NOT NULL, PRIMARY KEY(timeline_id,id), FOREIGN KEY(timeline_id,revision) REFERENCES revisions(timeline_id,revision));
-CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, timeline_id TEXT NOT NULL, revision INTEGER NOT NULL, status TEXT NOT NULL, body BLOB NOT NULL, FOREIGN KEY(timeline_id,revision) REFERENCES revisions(timeline_id,revision));
-PRAGMA user_version=1;`)
+CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, timeline_id TEXT NOT NULL, revision INTEGER NOT NULL, status TEXT NOT NULL, body BLOB NOT NULL, FOREIGN KEY(timeline_id,revision) REFERENCES revisions(timeline_id,revision));`)
 	if err != nil {
 		return fail(err)
+	}
+	if version < 2 {
+		_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS evidence(project_id TEXT NOT NULL REFERENCES projects(id), asset_id TEXT NOT NULL, id TEXT NOT NULL, cache_key TEXT NOT NULL DEFAULT '', body BLOB NOT NULL, PRIMARY KEY(project_id,id), FOREIGN KEY(project_id,asset_id) REFERENCES assets(project_id,id));
+CREATE INDEX IF NOT EXISTS evidence_project_asset ON evidence(project_id,asset_id);
+CREATE INDEX IF NOT EXISTS evidence_project_cache ON evidence(project_id,cache_key);
+PRAGMA user_version=2;`)
+		if err != nil {
+			return fail(err)
+		}
 	}
 	return &Store{db: db, Dir: dir}, nil
 }
@@ -124,6 +136,108 @@ func (s *Store) Assets(project string) (map[string]domain.MediaAsset, error) {
 		assets[a.ID] = a
 	}
 	return assets, rows.Err()
+}
+
+// PutEvidence is idempotent for an identical ID and refuses an accidental
+// cross-project/cache overwrite. Evidence never bypasses imported asset bounds.
+func (s *Store) PutEvidence(e domain.Evidence) (domain.Evidence, error) {
+	asset, err := s.Asset(e.ProjectID, e.AssetID)
+	if err != nil {
+		return e, err
+	}
+	if e.AssetContentHash == "" {
+		e.AssetContentHash = asset.ContentHash
+	}
+	if err = e.Validate(asset); err != nil {
+		return e, err
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		return e, err
+	}
+	var existing []byte
+	err = s.db.QueryRow("SELECT body FROM evidence WHERE project_id=? AND id=?", e.ProjectID, e.ID).Scan(&existing)
+	if err == nil {
+		if string(existing) != string(b) {
+			return e, ErrOperationReuse
+		}
+		return e, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return e, err
+	}
+	_, err = s.db.Exec("INSERT INTO evidence(project_id,asset_id,id,cache_key,body) VALUES(?,?,?,?,?)", e.ProjectID, e.AssetID, e.ID, e.CacheKey, b)
+	return e, err
+}
+
+func (s *Store) Evidence(project string, assetIDs []string) ([]domain.Evidence, error) {
+	if _, err := s.Project(project); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query("SELECT body FROM evidence WHERE project_id=? ORDER BY id", project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	allowed := map[string]bool{}
+	for _, id := range assetIDs {
+		allowed[id] = true
+	}
+	out := []domain.Evidence{}
+	for rows.Next() {
+		var b []byte
+		var e domain.Evidence
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(b, &e); err != nil {
+			return nil, err
+		}
+		if len(allowed) == 0 || allowed[e.AssetID] {
+			out = append(out, e)
+		}
+	}
+	return out, rows.Err()
+}
+
+// SearchEvidence is a deterministic offline lexical search. It is deliberately
+// transparent: P2 can replace scoring without changing P3's source contracts.
+func (s *Store) SearchEvidence(project, query string, assetIDs []string, limit int) ([]catalog.SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, errors.New("search query is required")
+	}
+	if limit < 1 || limit > 100 {
+		return nil, errors.New("search limit must be 1..100")
+	}
+	evidence, err := s.Evidence(project, assetIDs)
+	if err != nil {
+		return nil, err
+	}
+	terms := strings.Fields(strings.ToLower(query))
+	out := make([]catalog.SearchResult, 0, len(evidence))
+	for _, e := range evidence {
+		text := strings.ToLower(e.Transcript + " " + e.VisualSummary)
+		matches := 0
+		for _, term := range terms {
+			if strings.Contains(text, term) {
+				matches++
+			}
+		}
+		if matches == 0 {
+			continue
+		}
+		out = append(out, catalog.SearchResult{Evidence: e, Score: float64(matches) / float64(len(terms)), Reason: "matched evidence transcript or visual_summary"})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Score == out[j].Score {
+			return out[i].Evidence.ID < out[j].Evidence.ID
+		}
+		return out[i].Score > out[j].Score
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 func (s *Store) CreateTimeline(t domain.TimelineRevision) error {
 	if t.Revision != 1 {
@@ -249,13 +363,55 @@ func (s *Store) Save(ctx context.Context, t domain.TimelineRevision, op domain.E
 }
 
 func (s *Store) CreateJob(j domain.RenderJob) error {
-	if j.ID == "" || j.Status != "running" || (j.Kind != "export" && j.Kind != "preview") {
+	if j.ID == "" || (j.Status != "queued" && j.Status != "running") || (j.Kind != "export" && j.Kind != "preview") {
 		return errors.New("invalid render job")
 	}
 	j.UpdatedAt = time.Now().UTC()
 	b, _ := json.Marshal(j)
 	_, err := s.db.Exec("INSERT INTO jobs VALUES(?,?,?,?,?)", j.ID, j.TimelineID, j.Revision, j.Status, b)
 	return err
+}
+
+func (s *Store) StartJob(id string) (domain.RenderJob, error) {
+	j, err := s.Job(id)
+	if err != nil {
+		return j, err
+	}
+	if j.Status != "queued" {
+		return j, fmt.Errorf("job state conflict: %s", id)
+	}
+	j.Status, j.Progress, j.UpdatedAt = "running", 1, time.Now().UTC()
+	b, _ := json.Marshal(j)
+	r, err := s.db.Exec("UPDATE jobs SET status=?,body=? WHERE id=? AND status='queued'", j.Status, b, id)
+	if err != nil {
+		return j, err
+	}
+	n, _ := r.RowsAffected()
+	if n != 1 {
+		return j, fmt.Errorf("job state conflict: %s", id)
+	}
+	return j, nil
+}
+
+func (s *Store) CancelQueuedJob(id string) (domain.RenderJob, error) {
+	j, err := s.Job(id)
+	if err != nil {
+		return j, err
+	}
+	if j.Status != "queued" {
+		return j, fmt.Errorf("job state conflict: %s", id)
+	}
+	j.Status, j.Error, j.UpdatedAt = "cancelled", "cancelled by caller", time.Now().UTC()
+	b, _ := json.Marshal(j)
+	r, err := s.db.Exec("UPDATE jobs SET status=?,body=? WHERE id=? AND status='queued'", j.Status, b, id)
+	if err != nil {
+		return j, err
+	}
+	n, _ := r.RowsAffected()
+	if n != 1 {
+		return j, fmt.Errorf("job state conflict: %s", id)
+	}
+	return j, nil
 }
 func (s *Store) FinishJob(j domain.RenderJob) error {
 	if j.Status != "completed" && j.Status != "failed" && j.Status != "cancelled" {
@@ -279,4 +435,25 @@ func (s *Store) FinishJob(j domain.RenderJob) error {
 func (s *Store) Job(id string) (j domain.RenderJob, err error) {
 	err = decode(s.db.QueryRow("SELECT body FROM jobs WHERE id=?", id), &j)
 	return
+}
+
+func (s *Store) Jobs() ([]domain.RenderJob, error) {
+	rows, err := s.db.Query("SELECT body FROM jobs ORDER BY rowid DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs := []domain.RenderJob{}
+	for rows.Next() {
+		var b []byte
+		var j domain.RenderJob
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(b, &j); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
 }

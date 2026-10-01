@@ -105,4 +105,10 @@ docker compose build --no-cache
 
 若出现 Docker 连接错误，先确认 Docker Desktop 正在运行。若素材导入失败，确认文件实际在 `workspace\input\`，路径使用 `/workspace/input/...`，并检查 Docker Desktop 已允许共享该磁盘。渲染慢通常取决于视频长度、分辨率和电脑 CPU。
 
-镜像只挂载 `workspace/`，所以容器无法直接读取其他 Windows 路径。需要导入的素材先复制进 `workspace\input\`。P1 还没有浏览器界面或常驻 API；Docker 打包的是当前的确定性编辑 CLI。
+镜像只挂载 `workspace/`，所以容器无法直接读取其他 Windows 路径。需要导入的素材先复制进 `workspace\input\`。P1 没有浏览器界面；如需让本机外部 Agent 调用 P3 API，可运行：
+
+```powershell
+docker compose run --rm --service-ports video-agent --data /workspace/data serve --addr 0.0.0.0:8090
+```
+
+然后仅从本机调用 `http://127.0.0.1:8090/v1/tools`。完整协议见 [P3 API](api.md)。

@@ -7,17 +7,21 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/zylar06/video-agent/internal/agent"
 	"github.com/zylar06/video-agent/internal/app"
 	"github.com/zylar06/video-agent/internal/domain"
 	"github.com/zylar06/video-agent/internal/edit"
+	"github.com/zylar06/video-agent/internal/httpapi"
 	"github.com/zylar06/video-agent/internal/store"
 )
 
-const help = `video-agent: local deterministic video editing (P1)
+const help = `video-agent: local deterministic video editing and P3 agent API
 
 Usage: video-agent [--data DIR] COMMAND [flags]
   project create --id ID --name NAME
@@ -31,8 +35,13 @@ Usage: video-agent [--data DIR] COMMAND [flags]
   render export --timeline ID [--revision N] [--output FILE.mp4]
   render preview --timeline ID [--revision N] [--output FILE.mp4]
   jobs get --id ID
+  tool list
+  tool call --tool TOOL --file JSON
+  serve [--addr 127.0.0.1:8090]
 
-JSON files accept '-' for stdin. All results/errors are JSON. Render is synchronous.
+JSON files accept '-' for stdin. P1 render commands remain synchronous; P3
+render_submit is asynchronous when called through tool/API. The HTTP server only
+listens on loopback and exposes /v1/tools, /v1/jobs and /v1/artifacts.
 Set VIDEO_AGENT_FFMPEG / VIDEO_AGENT_FFPROBE to override executable paths.
 `
 
@@ -40,6 +49,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	result, err := run(ctx, os.Args[1:])
+	if envelope, ok := result.(agent.Envelope); ok && !envelope.OK {
+		_ = json.NewEncoder(os.Stdout).Encode(envelope)
+		os.Exit(1)
+	}
 	if err != nil {
 		code := "invalid_request"
 		if errors.Is(err, store.ErrConflict) {
@@ -96,6 +109,35 @@ func run(ctx context.Context, args []string) (any, error) {
 		return nil, err
 	}
 	args = global.Args()
+	if len(args) == 0 {
+		return nil, errors.New("expected command and subcommand; use --help")
+	}
+	if args[0] == "serve" {
+		f := flag.NewFlagSet("serve", flag.ContinueOnError)
+		f.SetOutput(io.Discard)
+		addr := f.String("addr", "127.0.0.1:8090", "loopback listen address")
+		if err := f.Parse(args[1:]); err != nil || f.NArg() != 0 {
+			if err != nil {
+				return nil, err
+			}
+			return nil, errors.New("unexpected serve argument")
+		}
+		if err := loopback(*addr); err != nil {
+			return nil, err
+		}
+		a, err := app.Open(*data)
+		if err != nil {
+			return nil, err
+		}
+		defer a.Close()
+		srv := httpapi.Server(*addr, httpapi.New(a))
+		go func() { <-ctx.Done(); _ = srv.Shutdown(context.Background()) }()
+		err = srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return map[string]string{"status": "stopped"}, nil
+		}
+		return nil, err
+	}
 	if len(args) < 2 {
 		return nil, errors.New("expected command and subcommand; use --help")
 	}
@@ -111,6 +153,7 @@ func run(ctx context.Context, args []string) (any, error) {
 	revision := f.Int("revision", 0, "revision (0=current)")
 	output := f.String("output", "", "output MP4")
 	preview := f.Bool("preview", false, "preview plan")
+	toolName := f.String("tool", "", "P3 tool name")
 	if err := f.Parse(args[2:]); err != nil {
 		return nil, err
 	}
@@ -121,7 +164,7 @@ func run(ctx context.Context, args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer a.Store.Close()
+	defer a.Close()
 	switch command {
 	case "project create":
 		p := domain.Project{ID: *id, Name: *name}
@@ -158,7 +201,33 @@ func run(ctx context.Context, args []string) (any, error) {
 		return a.Render(ctx, *timeline, *revision, command == "render preview", *output)
 	case "jobs get":
 		return a.Store.Job(*id)
+	case "tool list":
+		return agent.NewService(a).Names(), nil
+	case "tool call":
+		var raw json.RawMessage
+		if err := readJSON(*file, &raw); err != nil {
+			return nil, err
+		}
+		return agent.NewService(a).Call(ctx, *toolName, raw), nil
 	default:
 		return nil, fmt.Errorf("unknown command %q; use --help", command)
 	}
+}
+
+func loopback(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.New("addr must be host:port")
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if host == "0.0.0.0" && os.Getenv("VIDEO_AGENT_ALLOW_CONTAINER_LISTEN") == "1" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("serve only permits a loopback address")
+	}
+	return nil
 }
