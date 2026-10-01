@@ -2,7 +2,7 @@
 
 这个镜像包含 `video-agent`、FFmpeg 和 ffprobe。它通过 Docker Desktop 的 Linux 容器运行，因此 Windows 用户不需要单独安装 Go、FFmpeg 或配置编译环境。
 
-P1 当前是本地命令行工具，不是常驻 Web 服务。每次命令会启动一个容器、操作挂载的工程目录并退出；工程数据和成片仍在 Windows 文件系统中。
+产品主入口是本机 Web 服务：用户通过浏览器导入素材、分析、对话选片并导出。命令行仍可用于工程调试和自动化回归；每次命令会启动一个容器、操作挂载的工程目录并退出。工程数据和成片仍在 Windows 文件系统中。
 
 ## Windows 一键开始
 
@@ -105,10 +105,10 @@ docker compose build --no-cache
 
 若出现 Docker 连接错误，先确认 Docker Desktop 正在运行。若素材导入失败，确认文件实际在 `workspace\input\`，路径使用 `/workspace/input/...`，并检查 Docker Desktop 已允许共享该磁盘。渲染慢通常取决于视频长度、分辨率和电脑 CPU。
 
-镜像只挂载 `workspace/`，所以容器无法直接读取其他 Windows 路径。需要导入的素材先复制进 `workspace\input\`。P1 没有浏览器界面；如需让本机外部 Agent 调用 P3 API，可运行：
+镜像只挂载 `workspace/`，所以容器无法直接读取其他 Windows 路径。需要导入的素材先复制进 `workspace\input\`。启动下列服务后，在宿主机打开 `http://127.0.0.1:8090/`，即可使用浏览器界面；命令行/API 是实现、调试和回归入口：
 
 ```powershell
 docker compose run --rm --service-ports video-agent --data /workspace/data serve --addr 0.0.0.0:8090
 ```
 
-然后仅从本机调用 `http://127.0.0.1:8090/v1/tools`。完整协议见 [P3 API](api.md)。
+服务仅供本机访问。完整内部接口见 [接口说明](api.md)。

@@ -1,6 +1,6 @@
-# P3 本地 Agent API（v1）
+# 内部本地服务接口（v1）
 
-P3 将现有的确定性编辑引擎包装为本地、受限的工具 API。它不是 MCP：外部 Code Agent 可以用 HTTP 或 JSON CLI 调用它，但不会获得任意 shell、数据库或文件系统权限。
+服务为 Web 产品提供本机受限接口，也供 CLI、调试和自动化回归复用。它不是面向第三方的公共 API，也不会给予任意 shell、数据库或文件系统权限。创作者应使用浏览器中的自然语言入口；下列接口是实现细节，可能随产品演进调整。
 
 启动服务（默认只监听 loopback）：
 
@@ -21,6 +21,11 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/v1/health` | 本地服务健康状态 |
+| `POST` | `/v1/ui/projects` | Web 创建项目 |
+| `GET` / `POST` | `/v1/ui/projects/{id}/assets` | Web 查询或上传素材与可选字幕 |
+| `POST` | `/v1/ui/analyze` | Web 发起或复用证据分析 |
+| `POST` | `/v1/ui/proposals` | Web 将自然语言目标转为可审阅方案 |
+| `POST` | `/v1/ui/proposals/confirm` | Web 确认方案并保存时间线 |
 | `POST` | `/v1/chat` | 将自然语言剪辑请求解析为意图，并返回有来源候选 |
 | `GET` | `/v1/tools` | 可调用工具名称 |
 | `POST` | `/v1/tools/{tool}` | 调用工具，body 是 JSON 输入 |
@@ -28,13 +33,13 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | `POST` | `/v1/jobs/{id}/cancel` | 取消 queued/running 导出 |
 | `GET` | `/v1/artifacts/{job_id}` | 读取成功任务的 MP4，支持 HTTP Range |
 
-产物读取只允许数据库中已完成任务登记、并位于 `<data>/exports/` 内的常规文件；路径穿越和 P1 任意 `--output` 位置不会被 API 暴露。
+产物读取只允许数据库中已完成任务登记、并位于数据目录 exports 下的常规文件；路径穿越和 CLI 任意输出位置不会被 API 暴露。
 
 ## 工具
 
-`project_create`、`project_get`、`assets_import`、`assets_list`、`timeline_create`、`timeline_get`、`timeline_history`、`edit_apply` 直接映射已有 P1 领域对象，继续执行资产归属、revision、锁定和幂等操作 ID 校验。
+项目、素材和时间线工具直接映射剪辑领域对象，继续执行资产归属、revision、锁定和幂等操作 ID 校验。
 
-新增 P3 工具：
+证据与渲染工具：
 
 | 工具 | 输入重点 | 结果 |
 |---|---|---|
@@ -45,7 +50,7 @@ bin/video-agent --data data/demo serve --addr 127.0.0.1:8090
 | `render_submit` | `timeline_id`、可选 `revision`、`preview`、`filename` | 立即返回 `queued` job；文件名只能是 `.mp4` 基名 |
 | `jobs_get`、`jobs_list`、`jobs_cancel` | 任务 ID（list 无输入） | 查询、列表或取消任务 |
 
-P2 使用 OpenAI-compatible HTTP 接口作为可选 provider。配置 `VIDEO_AGENT_ASR_BASE_URL`、`VIDEO_AGENT_ASR_MODEL`、`VIDEO_AGENT_ASR_API_KEY` 启用转写；配置 `VIDEO_AGENT_VISION_*` 或 GoClip 的 `AUTOCLIP_VISION_*` 启用逐帧描述。`AUTOCLIP_TEXT_*` 是文本模型，不会被误当成 ASR。provider 失败会持久化为 failed，不会伪装成完成。
+分析使用 OpenAI-compatible HTTP 接口作为可选 provider。ASR 支持 `VIDEO_AGENT_ASR_*` 或 `AUTOCLIP_ASR_*`；配置 `VIDEO_AGENT_VISION_*` 或 `AUTOCLIP_VISION_*` 启用逐帧描述；`AUTOCLIP_TEXT_*` 提供自然语言理解与方案解释，不会被误当成 ASR。qwen3-asr-flash 经 chat completions 接收分段音频，其他兼容 ASR 可经 audio transcriptions 接收音频。provider 失败会持久化为 failed，不会伪装成完成。
 
 对话请求示例：
 

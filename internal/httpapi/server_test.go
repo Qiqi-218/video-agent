@@ -42,3 +42,21 @@ func TestToolsAreLoopbackAPIJSON(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+func TestUICreatesAProjectWithoutAnExposedID(t *testing.T) {
+	a, err := app.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	s := httptest.NewServer(New(a))
+	defer s.Close()
+	resp, err := http.Post(s.URL+"/v1/ui/projects", "application/json", bytes.NewBufferString(`{"name":"我的首支视频"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create response: %s", resp.Status)
+	}
+}

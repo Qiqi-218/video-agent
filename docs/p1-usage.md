@@ -1,6 +1,8 @@
-# P1 使用与数据契约
+# 工程 CLI 使用与数据契约（历史）
 
-P1 提供无需模型的本地视频工程服务。依赖 Go 1.24+、FFmpeg/ffprobe 6+，FFmpeg 需要 libx264 和 AAC 编码器。当前开发验收环境见 [验收记录](p1-acceptance.md)。
+> 面向创作者的产品入口是 Web 页面。本文保留底层 CLI 的调试、自动化回归和历史验收方法，不是当前产品使用说明。
+
+底层 CLI 提供无需模型的本地视频工程服务。依赖 Go 1.24+、FFmpeg/ffprobe 6+，FFmpeg 需要 libx264 和 AAC 编码器。当前开发验收环境见 [验收记录](p1-acceptance.md)。
 
 ## 从自己的素材开始
 

@@ -4,10 +4,12 @@ package httpapi
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/zylar06/video-agent/internal/analysis/provider"
 	"github.com/zylar06/video-agent/internal/app"
 	"github.com/zylar06/video-agent/internal/chat"
+	"github.com/zylar06/video-agent/internal/domain"
 )
 
 //go:embed web/index.html
@@ -56,6 +59,116 @@ func New(a *app.App) http.Handler {
 			return
 		}
 		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: result})
+	})
+	// The UI routes are deliberately local implementation details. They provide
+	// a safe browser workflow without exposing filesystem paths or tool JSON.
+	mux.HandleFunc("POST /v1/ui/projects", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil || strings.TrimSpace(in.Name) == "" {
+			write(w, http.StatusBadRequest, invalid(errors.New("请输入项目名称")))
+			return
+		}
+		p := domain.Project{ID: "project-" + app.ID(), Name: strings.TrimSpace(in.Name)}
+		if err := a.Store.CreateProject(p); err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: p})
+	})
+	mux.HandleFunc("GET /v1/ui/projects/{id}/assets", func(w http.ResponseWriter, r *http.Request) {
+		assets, err := a.Store.Assets(r.PathValue("id"))
+		if err != nil {
+			write(w, http.StatusNotFound, invalid(err))
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: assets})
+	})
+	mux.HandleFunc("POST /v1/ui/projects/{id}/assets", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 2<<30)
+		if err := r.ParseMultipartForm(16 << 20); err != nil {
+			write(w, http.StatusBadRequest, invalid(errors.New("视频文件超过 2GB 或上传格式不正确")))
+			return
+		}
+		file, header, err := r.FormFile("video")
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(errors.New("请选择视频文件")))
+			return
+		}
+		defer file.Close()
+		path, err := saveUpload(a.Store.Dir, "uploads", header.Filename, file)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		asset, err := a.Tools.Import(r.Context(), a.Store, r.PathValue("id"), path)
+		_ = os.Remove(path)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		result := map[string]any{"asset": asset}
+		if subtitle, sh, subtitleErr := r.FormFile("subtitle"); subtitleErr == nil {
+			defer subtitle.Close()
+			sp, saveErr := saveUpload(a.Store.Dir, "subtitles", sh.Filename, subtitle)
+			if saveErr != nil {
+				write(w, http.StatusBadRequest, invalid(saveErr))
+				return
+			}
+			result["subtitle_path"] = sp
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: result})
+	})
+	mux.HandleFunc("POST /v1/ui/analyze", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			ProjectID    string `json:"project_id"`
+			AssetID      string `json:"asset_id"`
+			SubtitlePath string `json:"subtitle_path,omitempty"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		vision := provider.ConfigFromEnvAliases("VIDEO_AGENT_VISION", "AUTOCLIP_VISION")
+		visualEnabled := vision.BaseURL != "" && vision.Model != "" && vision.APIKey != ""
+		result, err := analysis.New(a.Store, a.Tools).Analyze(r.Context(), analysis.Request{ProjectID: in.ProjectID, AssetID: in.AssetID, SubtitlePath: in.SubtitlePath, Visual: visualEnabled})
+		if err != nil {
+			write(w, http.StatusBadRequest, agent.Envelope{APIVersion: agent.APIVersion, OK: false, Error: &agent.APIError{Code: "model_unavailable", Message: "请上传 SRT/VTT 字幕，或在服务端配置 AUTOCLIP_ASR_* 后重试。"}})
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: result})
+	})
+	mux.HandleFunc("POST /v1/ui/proposals", func(w http.ResponseWriter, r *http.Request) {
+		var in chat.Request
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		result, err := (chat.Service{Store: a.Store, Text: provider.OpenAIText{Config: provider.ConfigFromEnvAliases("VIDEO_AGENT_TEXT", "AUTOCLIP_TEXT")}}).Handle(r.Context(), in)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		draft, err := draftTimeline(a, in.ProjectID, in.AssetID, result)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: map[string]any{"reply": result.Reply, "intent": result.Intent, "evidence": result.Evidence, "timeline": draft}})
+	})
+	mux.HandleFunc("POST /v1/ui/proposals/confirm", func(w http.ResponseWriter, r *http.Request) {
+		var timeline domain.TimelineRevision
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&timeline); err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		created, err := a.CreateTimeline(timeline)
+		if err != nil {
+			write(w, http.StatusBadRequest, invalid(err))
+			return
+		}
+		write(w, http.StatusOK, agent.Envelope{APIVersion: agent.APIVersion, OK: true, Result: created})
 	})
 	mux.HandleFunc("POST /v1/tools/{name}", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -106,6 +219,76 @@ func New(a *app.App) http.Handler {
 		http.ServeContent(w, r, filepath.Base(j.Output), info.ModTime(), f)
 	})
 	return securityHeaders(mux)
+}
+
+func saveUpload(dataDir, group, name string, source io.Reader) (string, error) {
+	ext := strings.ToLower(filepath.Ext(name))
+	if group == "uploads" && ext != ".mp4" && ext != ".mov" && ext != ".m4v" {
+		return "", errors.New("仅支持 MP4、MOV 或 M4V 视频")
+	}
+	if group == "subtitles" && ext != ".srt" && ext != ".vtt" {
+		return "", errors.New("字幕仅支持 SRT 或 VTT")
+	}
+	dir := filepath.Join(dataDir, group)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(dir, "upload-*"+ext)
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	_, copyErr := io.Copy(f, source)
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(path)
+		return "", errors.Join(copyErr, closeErr)
+	}
+	return path, nil
+}
+
+func draftTimeline(a *app.App, projectID, assetID string, result chat.Result) (domain.TimelineRevision, error) {
+	if len(result.Evidence) == 0 {
+		return domain.TimelineRevision{}, errors.New("没有找到可确认的素材片段，请换一种说法或补充字幕")
+	}
+	asset, err := a.Store.Asset(projectID, assetID)
+	if err != nil {
+		return domain.TimelineRevision{}, err
+	}
+	parts := strings.Split(asset.FPS, "/")
+	fpsNum, fpsDen := 30, 1
+	if len(parts) == 2 {
+		if n, e := strconv.Atoi(parts[0]); e == nil && n > 0 {
+			fpsNum = n
+		}
+		if d, e := strconv.Atoi(parts[1]); e == nil && d > 0 {
+			fpsDen = d
+		}
+	}
+	t := domain.TimelineRevision{ID: "timeline-" + app.ID(), ProjectID: projectID, Revision: 1, FPSNum: fpsNum, FPSDen: fpsDen, Width: asset.Width, Height: asset.Height}
+	remaining := result.Intent.DurationUS
+	for i, hit := range result.Evidence {
+		e := hit.Evidence
+		end := e.EndUS
+		if remaining > 0 && end-e.StartUS > remaining {
+			end = e.StartUS + remaining
+		}
+		if end <= e.StartUS {
+			break
+		}
+		t.Items = append(t.Items, domain.ClipItem{ID: "clip-" + strconv.Itoa(i+1), AssetID: e.AssetID, SourceInUS: e.StartUS, SourceOutUS: end, DurationFrames: t.Frames(end - e.StartUS), EvidenceIDs: []string{e.ID}})
+		if remaining > 0 {
+			remaining -= end - e.StartUS
+			if remaining <= 0 {
+				break
+			}
+		}
+	}
+	if len(t.Items) == 0 {
+		return domain.TimelineRevision{}, errors.New("候选片段无法生成时间线")
+	}
+	t.Reflow()
+	return t, nil
 }
 
 func Server(addr string, h http.Handler) *http.Server {

@@ -12,6 +12,7 @@ func TestClassifySupportedRequests(t *testing.T) {
 		{"保留进球和庆祝", "sports", "进球 庆祝", 0},
 		{"删掉开场和片尾", "trim_ends", "", 0},
 		{"生成预览", "preview", "", 0},
+		{"保留产品发布的掌声片段，剪成 30 秒", "select", "产品发布的掌声", 30_000_000},
 	}
 	for _, tt := range tests {
 		got := classify(tt.message)
